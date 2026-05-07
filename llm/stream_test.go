@@ -91,7 +91,8 @@ func TestStreamResponse_EmptyStopChunk(t *testing.T) {
 	require.Equal(t, "done", result.Content)
 }
 
-// is invoked for content arriving in the stop chunk.
+// TestStreamResponse_OnContentCalledForStopChunkContent verifies that
+// OnContent is invoked for content arriving in the final stop chunk.
 func TestStreamResponse_OnContentCalledForStopChunkContent(t *testing.T) {
 	var tokens []string
 	handler := &llm.StreamHandler{

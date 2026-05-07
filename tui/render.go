@@ -20,7 +20,7 @@ type UsageStats struct {
 	TokensPerSecond float64
 }
 
-// TerminalRenderer returns a StreamHandler that renders streaming
+// TerminalRenderer returns a *llm.StreamHandler that renders streaming
 // LLM/agent output to w with ANSI colors.
 //
 // Rendering:

@@ -47,7 +47,7 @@
 //
 // # Rendering
 //
-// TerminalRenderer returns an llm.StreamHandler that renders streaming
+// TerminalRenderer returns a *llm.StreamHandler that renders streaming
 // content, reasoning, and tool-call events to an io.Writer with ANSI colors.
 // FPrintUsage displays token usage statistics. UsageStats is a
 // dependency-free value type for passing usage data across package
