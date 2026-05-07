@@ -48,7 +48,8 @@ func TestPrintUsage_ZeroWindow(t *testing.T) {
 }
 
 func TestTerminalRenderer_Content(t *testing.T) {
-	renderer := TerminalRenderer()
+	var buf bytes.Buffer
+	renderer := TerminalRenderer(&buf)
 	// Just verify it doesn't panic on known kinds.
 	renderer("content", "hello")
 	renderer("reasoning", "thinking...")

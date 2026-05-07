@@ -14,11 +14,11 @@ import (
 
 // AgentConfig controls AgentREPL creation.
 type AgentConfig struct {
-	// Title is printed as the header when Run starts. Required.
+	// Title is printed as the header when Run starts.
 	Title string
 	// Banner is passed to the underlying REPL as a startup message.
 	Banner string
-	// SystemPrompt defines the built-in chat agent's role. Required.
+	// SystemPrompt defines the built-in chat agent's role.
 	SystemPrompt string
 	// EngineLoader is called once on first use to load the LLM engine.
 	// It returns the engine, a cleanup func (may be nil), and an error.
@@ -175,7 +175,7 @@ func (t *AgentREPL) runChat(ctx context.Context) error {
 		SystemPrompt: t.cfg.SystemPrompt,
 		Engine:       t.engine,
 		Tools:        t.cfg.Registry,
-		OnToken:      TerminalRenderer(),
+		OnToken:      TerminalRenderer(t.repl.Out),
 		OnToolCall: func(name, output string) {
 			_, _ = fmt.Fprintf(t.repl.Out, "\n%s\n%s\n", Green("Tool: "+name), SanitizeOutput(output))
 		},

@@ -15,19 +15,18 @@
 //
 // # Prompt
 //
-// Prompt and FPrompt read a single trimmed, non-empty line from a
-// bufio.Scanner after printing a formatted prompt string. They abstract
-// the common read-loop boilerplate found in interactive REPL and chat interfaces.
-// FPrompt accepts an io.Writer for testability; Prompt writes to stdout.
-// Both return (line, error) where io.EOF signals clean end-of-input and
+// FPrompt reads a single trimmed, non-empty line from a bufio.Scanner after
+// printing a formatted prompt string to an io.Writer. It abstracts the common
+// read-loop boilerplate found in interactive REPL and chat interfaces.
+// Returns (line, error) where io.EOF signals clean end-of-input and
 // scanner.Err() is surfaced as a non-nil error.
 //
 // # Styled messages
 //
-// Info, Warn, Error and their formatted/writer variants print prefixed,
-// colored messages for common CLI output patterns. The F-prefixed variants
-// accept an io.Writer; the convenience wrappers write to stdout (Info, Warn)
-// or stderr (Error).
+// The F-prefixed functions (FInfo, FWarn, FError, FInfof, FWarnf, FErrorf)
+// print prefixed, colored messages for common CLI output patterns and accept
+// an io.Writer for testability. The Infof and Warnf convenience wrappers
+// write to stdout.
 //
 // # REPL
 //
@@ -49,8 +48,8 @@
 // # Rendering
 //
 // TerminalRenderer returns a streaming token callback that renders
-// agent/LLM output to the terminal with ANSI colors. PrintUsage and
-// FPrintUsage display token usage statistics. UsageStats is a
+// agent/LLM output to the provided io.Writer with ANSI colors. FPrintUsage
+// displays token usage statistics. UsageStats is a
 // dependency-free value type for passing usage data across package
 // boundaries without importing LLM-specific packages.
 package tui

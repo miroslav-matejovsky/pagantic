@@ -110,7 +110,7 @@ func (d *diceTool) Execute(args map[string]any) (string, error) {
 
 	results := make([]string, count)
 	total := 0
-	for i := range count {
+	for i := range results {
 		v := rand.Intn(sides) + 1
 		results[i] = fmt.Sprintf("%d", v)
 		total += v

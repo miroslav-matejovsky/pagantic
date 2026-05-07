@@ -18,21 +18,21 @@ type UsageStats struct {
 }
 
 // TerminalRenderer returns an onToken callback that renders streaming
-// LLM/agent output to stdout with ANSI colors.
+// LLM/agent output to w with ANSI colors.
 //
 // Recognized token kinds:
 //   - "reasoning": printed in red (model thinking tokens)
 //   - "content": printed in default color
 //   - "toolcall": printed in green with [TOOL] prefix
-func TerminalRenderer() func(kind, text string) {
+func TerminalRenderer(w io.Writer) func(kind, text string) {
 	return func(kind, text string) {
 		switch kind {
 		case "reasoning":
-			fmt.Printf("%s%s%s", red, text, reset)
+			_, _ = fmt.Fprintf(w, "%s%s%s", red, text, reset)
 		case "content":
-			fmt.Print(text)
+			_, _ = fmt.Fprint(w, text)
 		case "toolcall":
-			fmt.Printf("\n%s[TOOL] %s%s\n", green, text, reset)
+			_, _ = fmt.Fprintf(w, "\n%s[TOOL] %s%s\n", green, text, reset)
 		}
 	}
 }

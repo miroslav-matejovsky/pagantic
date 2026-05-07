@@ -1,4 +1,4 @@
-# Check for unreachable functions in cmd entry points
+# Check for unreachable functions in examples
 $out = deadcode ./examples/... 2>&1
 if ($LASTEXITCODE -ne 0) {
     Write-Host $out
