@@ -63,6 +63,9 @@ func main() {
 	}
 
 	fmt.Println()
+	fmt.Println()
+	fmt.Println("Repaired result:")
+	fmt.Println(result.Content)
 	llm.PrintUsage(result.Usage)
 	fmt.Println("\nDone.")
 }

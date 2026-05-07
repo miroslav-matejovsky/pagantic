@@ -44,6 +44,14 @@ loop:
 			return ChatResult{}, fmt.Errorf("model error: %s", resp.Choices[0].Delta.Content)
 
 		case model.FinishReasonStop:
+			if resp.Choices[0].Delta != nil && resp.Choices[0].Delta.Content != "" {
+				if reasoning {
+					reasoning = false
+					emit("reasoning", "\n")
+				}
+				content.WriteString(resp.Choices[0].Delta.Content)
+				emit("content", resp.Choices[0].Delta.Content)
+			}
 			break loop
 
 		case model.FinishReasonTool:
