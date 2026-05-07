@@ -14,3 +14,5 @@ Not intended for production use - learning tool and prototyping base.
 ## Examples
 
 - **examples/simple-chat** - Minimal interactive chat REPL
+- **examples/tool-use** - Chat with a custom Go tool (dice roller)
+- **examples/structured-output** - SpecializedAgent with JSON schema output

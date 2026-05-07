@@ -3,6 +3,7 @@
 // specific to any application.
 //
 // It handles library installation, model downloading, and engine
-// initialization through a single Load call. Global SDK initialization
-// is guarded by sync.Once so it is safe to call Load multiple times.
+// initialization through a single Load call. Config.ModelSource is required
+// and must specify the model to load. Global SDK initialization is guarded
+// by sync.Once so it is safe to call Load multiple times.
 package kronk

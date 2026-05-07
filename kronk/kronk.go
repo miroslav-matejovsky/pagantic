@@ -13,17 +13,13 @@ import (
 	"github.com/ardanlabs/kronk/sdk/tools/models"
 )
 
-// DefaultModel is the default LLM model used when Config.ModelSource
-// is empty.
-const DefaultModel = "unsloth/Qwen3-0.6B-Q8_0"
-
 // installTimeout limits how long library and model downloads can take.
 const installTimeout = 25 * time.Minute
 
 // Config controls engine initialization.
 type Config struct {
 	// ModelSource is a HuggingFace URL, canonical "provider/modelID",
-	// or bare model id. Defaults to DefaultModel if empty.
+	// or bare model id. Required.
 	ModelSource string
 }
 
@@ -36,12 +32,11 @@ var (
 // the inference engine, and returns the ready-to-use Kronk instance.
 // The returned cleanup function unloads the model and should be deferred.
 func Load(ctx context.Context, cfg Config) (*kronk.Kronk, func(), error) {
-	src := cfg.ModelSource
-	if src == "" {
-		src = DefaultModel
+	if cfg.ModelSource == "" {
+		return nil, nil, fmt.Errorf("kronk: Config.ModelSource must not be empty")
 	}
 
-	mp, err := install(ctx, src)
+	mp, err := install(ctx, cfg.ModelSource)
 	if err != nil {
 		return nil, nil, fmt.Errorf("kronk install: %w", err)
 	}

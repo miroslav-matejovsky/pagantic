@@ -82,9 +82,19 @@ tasks:
   # --- running stuff ---
 
   run-simple-chat:
-    desc: Run the simple-chat application
+    desc: Run the simple-chat example
     cmds:
       - go run examples/simple-chat/main.go
+
+  run-tool-use:
+    desc: Run the tool-use example
+    cmds:
+      - go run examples/tool-use/main.go
+
+  run-structured-output:
+    desc: Run the structured-output example
+    cmds:
+      - go run examples/structured-output/main.go
 
   # --- maintenance ---
 

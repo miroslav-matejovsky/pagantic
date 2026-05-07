@@ -1,5 +1,5 @@
 # Check for unreachable functions in cmd entry points
-$out = deadcode ./cmd/... 2>&1
+$out = deadcode ./examples/... 2>&1
 if ($LASTEXITCODE -ne 0) {
     Write-Host $out
     exit 1
