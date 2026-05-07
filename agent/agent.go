@@ -30,10 +30,11 @@ type Config struct {
 	Tools ToolProvider
 	// MaxTokens caps the LLM output per call. Defaults to 2048 when zero.
 	MaxTokens int
-	// OnToken is an optional callback for streaming output. Pass nil for silent operation.
-	OnToken func(kind, text string)
-	// OnToolCall is an optional callback for tool execution. Called with tool name and output.
-	OnToolCall func(name, output string)
+	// Stream receives typed streaming events (content, reasoning, tool-call requests).
+	// Pass nil for silent operation.
+	Stream *llm.StreamHandler
+	// OnToolResult is called after a tool is executed with the tool name and output.
+	OnToolResult func(name, output string)
 }
 
 // Agent is a specialized LLM agent with a fixed system prompt and optional tool support.
@@ -79,7 +80,7 @@ func (a *Agent) Chat(ctx context.Context, userMessage string) (llm.ChatResult, e
 			return llm.ChatResult{}, fmt.Errorf("agent chat: %w", err)
 		}
 
-		result, err := llm.StreamResponse(a.cfg.Engine, a.messages, ch, a.cfg.OnToken)
+		result, err := llm.StreamResponse(a.cfg.Engine, a.messages, ch, a.cfg.Stream)
 		if err != nil {
 			return llm.ChatResult{}, fmt.Errorf("agent stream: %w", err)
 		}
@@ -94,8 +95,8 @@ func (a *Agent) Chat(ctx context.Context, userMessage string) (llm.ChatResult, e
 			if execErr != nil {
 				output = fmt.Sprintf("Error: %v", execErr)
 			}
-			if a.cfg.OnToolCall != nil {
-				a.cfg.OnToolCall(tc.Name, output)
+			if a.cfg.OnToolResult != nil {
+				a.cfg.OnToolResult(tc.Name, output)
 			}
 			a.messages = append(a.messages, model.D{
 				"role":         "tool",
@@ -134,7 +135,7 @@ func (a *Agent) ChatStructured(ctx context.Context, userMessage string, jsonSche
 		return llm.ChatResult{}, fmt.Errorf("agent structured chat: %w", err)
 	}
 
-	result, err := llm.StreamResponse(a.cfg.Engine, messages, ch, a.cfg.OnToken)
+	result, err := llm.StreamResponse(a.cfg.Engine, messages, ch, a.cfg.Stream)
 	if err != nil {
 		return llm.ChatResult{}, fmt.Errorf("agent structured stream: %w", err)
 	}

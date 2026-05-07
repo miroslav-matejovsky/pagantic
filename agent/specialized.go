@@ -26,10 +26,11 @@ type SpecializedConfig struct {
 	Tools ToolProvider
 	// MaxTokens caps the LLM output per call. Defaults to 2048 when zero.
 	MaxTokens int
-	// OnToken is an optional callback for streaming output. Pass nil to disable.
-	OnToken func(kind, text string)
-	// OnToolCall is an optional callback for tool execution. Called with tool name and output.
-	OnToolCall func(name, output string)
+	// Stream receives typed streaming events (content, reasoning, tool-call requests).
+	// Pass nil for silent operation.
+	Stream *llm.StreamHandler
+	// OnToolResult is called after a tool is executed with the tool name and output.
+	OnToolResult func(name, output string)
 }
 
 // SpecializedAgent is a stateless LLM agent with a fixed system prompt and
@@ -75,8 +76,8 @@ func (a *SpecializedAgent) Call(ctx context.Context, prompt string) (llm.ChatRes
 		Engine:       a.cfg.Engine,
 		MaxTokens:    a.cfg.MaxTokens,
 		Tools:        a.cfg.Tools,
-		OnToken:      a.cfg.OnToken,
-		OnToolCall:   a.cfg.OnToolCall,
+		Stream:       a.cfg.Stream,
+		OnToolResult: a.cfg.OnToolResult,
 	})
 
 	if a.cfg.Tools != nil {

@@ -46,7 +46,8 @@
   "powershell.enableProfileLoading": true,
   "gopls": {
     "standaloneTags": [
-      "ignore"
+      "ignore",
+      "integration"
     ]
   },
   "todo-tree.filtering.includeHiddenFiles": true,

@@ -10,7 +10,7 @@ import (
 	"github.com/ardanlabs/kronk/sdk/kronk/model"
 	"github.com/miroslav-matejovsky/pagantic/agent"
 	"github.com/miroslav-matejovsky/pagantic/kronk"
-	"github.com/miroslav-matejovsky/pagantic/llm"
+	"github.com/miroslav-matejovsky/pagantic/tui"
 )
 
 const llmModel = "unsloth/Qwen3-0.6B-Q8_0"
@@ -47,7 +47,7 @@ func main() {
 		SystemPrompt: "Analyze the sentiment of the given text. Return structured JSON with sentiment, confidence (0-1), and a brief explanation.",
 		Engine:       engine,
 		Schema:       schema,
-		OnToken:      llm.TerminalRenderer(),
+		Stream:       tui.TerminalRenderer(os.Stdout),
 	})
 
 	sentence := "The weather is absolutely beautiful today, I love it!"
@@ -66,6 +66,13 @@ func main() {
 	fmt.Println()
 	fmt.Println("Repaired result:")
 	fmt.Println(result.Content)
-	llm.PrintUsage(result.Usage)
+	tui.FPrintUsage(os.Stdout, tui.UsageStats{
+		PromptTokens:    result.Usage.PromptTokens,
+		ReasoningTokens: result.Usage.ReasoningTokens,
+		OutputTokens:    result.Usage.OutputTokens,
+		ContextTokens:   result.Usage.ContextTokens,
+		ContextWindow:   result.Usage.ContextWindow,
+		TokensPerSecond: result.Usage.TokensPerSecond,
+	})
 	fmt.Println("\nDone.")
 }

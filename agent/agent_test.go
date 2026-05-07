@@ -131,7 +131,7 @@ func TestAgent_Chat_WithTools(t *testing.T) {
 		SystemPrompt: "sys",
 		Engine:       eng,
 		Tools:        tools,
-		OnToolCall: func(name, output string) {
+		OnToolResult: func(name, output string) {
 			callbackFired = true
 			require.Equal(t, "do_thing", name)
 			require.Equal(t, "result of do_thing", output)
@@ -142,7 +142,7 @@ func TestAgent_Chat_WithTools(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "done", result.Content)
 	require.Equal(t, []string{"do_thing"}, tools.called)
-	require.True(t, callbackFired, "OnToolCall callback should have been invoked")
+	require.True(t, callbackFired, "OnToolResult callback should have been invoked")
 	// two LLM calls: one for tool, one for final content
 	require.Len(t, eng.calls, 2)
 }
@@ -166,7 +166,7 @@ func TestAgent_Chat_ToolError(t *testing.T) {
 		SystemPrompt: "sys",
 		Engine:       eng,
 		Tools:        tools,
-		OnToolCall: func(name, output string) {
+		OnToolResult: func(name, output string) {
 			callbackCalls = append(callbackCalls, struct {
 				name, output string
 			}{name, output})

@@ -175,8 +175,8 @@ func (t *AgentREPL) runChat(ctx context.Context) error {
 		SystemPrompt: t.cfg.SystemPrompt,
 		Engine:       t.engine,
 		Tools:        t.cfg.Registry,
-		OnToken:      TerminalRenderer(t.repl.Out),
-		OnToolCall: func(name, output string) {
+		Stream:       TerminalRenderer(t.repl.Out),
+		OnToolResult: func(name, output string) {
 			_, _ = fmt.Fprintf(t.repl.Out, "\n%s\n%s\n", Green("Tool: "+name), SanitizeOutput(output))
 		},
 	})

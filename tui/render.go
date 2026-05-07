@@ -3,11 +3,14 @@ package tui
 import (
 	"fmt"
 	"io"
+
+	"github.com/miroslav-matejovsky/pagantic/llm"
 )
 
 // UsageStats holds token usage statistics for display purposes.
-// It mirrors the display-relevant fields of LLM usage data without
-// importing any LLM-specific packages, keeping pkg/tui dependency-free.
+// It mirrors the display-relevant fields of LLM usage data so callers
+// can pass usage data across package boundaries without importing
+// LLM-specific packages.
 type UsageStats struct {
 	PromptTokens    int
 	ReasoningTokens int
@@ -17,23 +20,24 @@ type UsageStats struct {
 	TokensPerSecond float64
 }
 
-// TerminalRenderer returns an onToken callback that renders streaming
+// TerminalRenderer returns a *llm.StreamHandler that renders streaming
 // LLM/agent output to w with ANSI colors.
 //
-// Recognized token kinds:
-//   - "reasoning": printed in red (model thinking tokens)
-//   - "content": printed in default color
-//   - "toolcall": printed in green with [TOOL] prefix
-func TerminalRenderer(w io.Writer) func(kind, text string) {
-	return func(kind, text string) {
-		switch kind {
-		case "reasoning":
+// Rendering:
+//   - reasoning tokens in red
+//   - content tokens in default color
+//   - tool calls in green with [TOOL] prefix
+func TerminalRenderer(w io.Writer) *llm.StreamHandler {
+	return &llm.StreamHandler{
+		OnReasoning: func(text string) {
 			_, _ = fmt.Fprintf(w, "%s%s%s", red, text, reset)
-		case "content":
+		},
+		OnContent: func(text string) {
 			_, _ = fmt.Fprint(w, text)
-		case "toolcall":
-			_, _ = fmt.Fprintf(w, "\n%s[TOOL] %s%s\n", green, text, reset)
-		}
+		},
+		OnToolCall: func(name, argsJSON string) {
+			_, _ = fmt.Fprintf(w, "\n%s[TOOL] %s(%s)%s\n", green, name, argsJSON, reset)
+		},
 	}
 }
 

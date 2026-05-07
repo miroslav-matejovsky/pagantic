@@ -47,9 +47,9 @@
 //
 // # Rendering
 //
-// TerminalRenderer returns a streaming token callback that renders
-// agent/LLM output to the provided io.Writer with ANSI colors. FPrintUsage
-// displays token usage statistics. UsageStats is a
+// TerminalRenderer returns a *llm.StreamHandler that renders streaming
+// content, reasoning, and tool-call events to an io.Writer with ANSI colors.
+// FPrintUsage displays token usage statistics. UsageStats is a
 // dependency-free value type for passing usage data across package
 // boundaries without importing LLM-specific packages.
 package tui
