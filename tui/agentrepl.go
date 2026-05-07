@@ -37,8 +37,8 @@ type AgentConfig struct {
 //   - lazy LLM engine loading via EngineLoader
 //   - an extensible command set via AddCommand
 //
-// VAGA-specific logic (system prompt, analyze command) is registered from
-// outside via AddCommand, keeping this type engine- and domain-agnostic.
+// Application-specific commands are registered from outside via AddCommand,
+// keeping this type engine- and domain-agnostic.
 //
 // Input and output use the underlying REPL's In/Out/ErrOut fields, which
 // default to stdin/stdout/stderr and can be replaced for testing.

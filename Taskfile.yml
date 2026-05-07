@@ -81,6 +81,11 @@ tasks:
 
   # --- running stuff ---
 
+  run-simple-chat:
+    desc: Run the simple-chat application
+    cmds:
+      - go run examples/simple-chat/main.go
+
   # --- maintenance ---
 
   deps:
