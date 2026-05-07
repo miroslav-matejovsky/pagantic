@@ -46,7 +46,6 @@ loop:
 		case model.FinishReasonStop:
 			if resp.Choices[0].Delta != nil && resp.Choices[0].Delta.Content != "" {
 				if reasoning {
-					reasoning = false
 					emit("reasoning", "\n")
 				}
 				content.WriteString(resp.Choices[0].Delta.Content)
