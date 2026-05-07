@@ -92,12 +92,12 @@ func TestStreamResponse_EmptyStopChunk(t *testing.T) {
 }
 
 // is invoked for content arriving in the stop chunk.
-func TestStreamResponse_OnTokenCalledForStopChunkContent(t *testing.T) {
+func TestStreamResponse_OnContentCalledForStopChunkContent(t *testing.T) {
 	var tokens []string
-	onToken := func(kind, text string) {
-		if kind == "content" {
+	handler := &llm.StreamHandler{
+		OnContent: func(text string) {
 			tokens = append(tokens, text)
-		}
+		},
 	}
 
 	ch := makeChannel(
@@ -113,9 +113,50 @@ func TestStreamResponse_OnTokenCalledForStopChunkContent(t *testing.T) {
 		},
 	)
 
-	result, err := llm.StreamResponse(&fakeEngine{}, model.DocumentArray(), ch, onToken)
+	result, err := llm.StreamResponse(&fakeEngine{}, model.DocumentArray(), ch, handler)
 
 	require.NoError(t, err)
 	require.Equal(t, "abc", result.Content)
 	require.Equal(t, []string{"ab", "c"}, tokens)
+}
+
+// TestStreamResponse_OnToolCallCalledForToolRequest verifies OnToolCall
+// fires with name and argsJSON when the LLM requests a tool.
+func TestStreamResponse_OnToolCallCalledForToolRequest(t *testing.T) {
+	var calls []struct{ name, args string }
+	handler := &llm.StreamHandler{
+		OnToolCall: func(name, argsJSON string) {
+			calls = append(calls, struct{ name, args string }{name, argsJSON})
+		},
+	}
+
+	args := map[string]any{"query": "foo"}
+
+	ch := makeChannel(
+		model.ChatResponse{
+			Choices: []model.Choice{{
+				Delta: &model.ResponseMessage{
+					ToolCalls: []model.ResponseToolCall{{
+						ID:   "tc1",
+						Type: "function",
+						Function: model.ResponseToolCallFunction{
+							Name:      "search",
+							Arguments: model.ToolCallArguments(args),
+						},
+					}},
+				},
+				FinishReasonPtr: strPtr(model.FinishReasonTool),
+			}},
+			Usage: &model.Usage{},
+		},
+	)
+
+	result, err := llm.StreamResponse(&fakeEngine{}, model.DocumentArray(), ch, handler)
+
+	require.NoError(t, err)
+	require.Len(t, result.ToolCalls, 1)
+	require.Equal(t, "search", result.ToolCalls[0].Name)
+	require.Len(t, calls, 1)
+	require.Equal(t, "search", calls[0].name)
+	require.NotEmpty(t, calls[0].args, "argsJSON should not be empty")
 }

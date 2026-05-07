@@ -10,21 +10,22 @@ const (
 	colorUsage     = "\033[90m" // grey
 )
 
-// TerminalRenderer returns an onToken callback that renders LLM output
+// TerminalRenderer returns a StreamHandler that renders LLM output
 // to the terminal with ANSI colors.
 //   - Reasoning tokens in bright red
 //   - Content tokens in default color
 //   - Tool calls in bright green
-func TerminalRenderer() func(kind, text string) {
-	return func(kind, text string) {
-		switch kind {
-		case "reasoning":
+func TerminalRenderer() *StreamHandler {
+	return &StreamHandler{
+		OnReasoning: func(text string) {
 			fmt.Printf("%s%s%s", colorReasoning, text, colorReset)
-		case "content":
+		},
+		OnContent: func(text string) {
 			fmt.Print(text)
-		case "toolcall":
-			fmt.Printf("\n%s[TOOL] %s%s\n", colorToolCall, text, colorReset)
-		}
+		},
+		OnToolCall: func(name, argsJSON string) {
+			fmt.Printf("\n%s[TOOL] %s(%s)%s\n", colorToolCall, name, argsJSON, colorReset)
+		},
 	}
 }
 

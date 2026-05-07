@@ -47,7 +47,7 @@ func main() {
 		SystemPrompt: "Analyze the sentiment of the given text. Return structured JSON with sentiment, confidence (0-1), and a brief explanation.",
 		Engine:       engine,
 		Schema:       schema,
-		OnToken:      llm.TerminalRenderer(),
+		Stream:       llm.TerminalRenderer(),
 	})
 
 	sentence := "The weather is absolutely beautiful today, I love it!"

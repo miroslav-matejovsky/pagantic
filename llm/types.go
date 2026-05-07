@@ -30,6 +30,36 @@ type ChatResult struct {
 	Usage     TokenUsage
 }
 
+// StreamHandler receives typed streaming events from the LLM.
+// Each callback handles one token kind. Nil callbacks are silently skipped.
+type StreamHandler struct {
+	// OnContent receives content tokens (the main response text).
+	OnContent func(text string)
+	// OnReasoning receives reasoning/thinking tokens.
+	OnReasoning func(text string)
+	// OnToolCall receives tool-call requests from the LLM.
+	// name is the tool name, argsJSON is the JSON-encoded arguments.
+	OnToolCall func(name, argsJSON string)
+}
+
+func (h *StreamHandler) emitContent(text string) {
+	if h != nil && h.OnContent != nil {
+		h.OnContent(text)
+	}
+}
+
+func (h *StreamHandler) emitReasoning(text string) {
+	if h != nil && h.OnReasoning != nil {
+		h.OnReasoning(text)
+	}
+}
+
+func (h *StreamHandler) emitToolCall(name, argsJSON string) {
+	if h != nil && h.OnToolCall != nil {
+		h.OnToolCall(name, argsJSON)
+	}
+}
+
 // TokenUsage holds token statistics from a single LLM call.
 type TokenUsage struct {
 	PromptTokens    int

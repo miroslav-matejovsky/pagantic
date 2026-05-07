@@ -11,25 +11,15 @@ import (
 // StreamResponse processes a streaming chat response from the LLM.
 // It extracts tool calls and content tokens, updates message history,
 // and returns a ChatResult. Terminal rendering is handled separately
-// via the optional onToken callback.
+// via the optional StreamHandler.
 //
-// onToken is called for each token with (tokenType, text). Types:
-//   - "reasoning": model thinking tokens
-//   - "content": response content tokens
-//   - "toolcall": tool call summary line
-//
-// Pass nil for silent operation (e.g., structured plan generation).
-func StreamResponse(engine Chat, messages []model.D, ch <-chan model.ChatResponse, onToken func(kind, text string)) (ChatResult, error) {
+// handler receives typed streaming events. Pass nil for silent operation
+// (e.g., structured plan generation).
+func StreamResponse(engine Chat, messages []model.D, ch <-chan model.ChatResponse, handler *StreamHandler) (ChatResult, error) {
 	var reasoning bool
 	var lr model.ChatResponse
 	var content strings.Builder
 	var toolCalls []ToolCallInfo
-
-	emit := func(kind, text string) {
-		if onToken != nil {
-			onToken(kind, text)
-		}
-	}
 
 loop:
 	for resp := range ch {
@@ -46,23 +36,23 @@ loop:
 		case model.FinishReasonStop:
 			if resp.Choices[0].Delta != nil && resp.Choices[0].Delta.Content != "" {
 				if reasoning {
-					emit("reasoning", "\n")
+					handler.emitReasoning("\n")
 				}
 				content.WriteString(resp.Choices[0].Delta.Content)
-				emit("content", resp.Choices[0].Delta.Content)
+				handler.emitContent(resp.Choices[0].Delta.Content)
 			}
 			break loop
 
 		case model.FinishReasonTool:
 			if reasoning {
-				emit("reasoning", "\n")
+				handler.emitReasoning("\n")
 			}
 
 			var toolCallDocs []model.D
 			for _, tool := range resp.Choices[0].Delta.ToolCalls {
 				argsJSON, _ := json.Marshal(tool.Function.Arguments)
 
-				emit("toolcall", fmt.Sprintf("%s(%s)", tool.Function.Name, string(argsJSON)))
+				handler.emitToolCall(tool.Function.Name, string(argsJSON))
 
 				toolCallDocs = append(toolCallDocs, model.D{
 					"id":   tool.ID,
@@ -92,18 +82,18 @@ loop:
 
 		default:
 			if resp.Choices[0].Delta.Reasoning != "" {
-				emit("reasoning", resp.Choices[0].Delta.Reasoning)
+				handler.emitReasoning(resp.Choices[0].Delta.Reasoning)
 				reasoning = true
 				continue
 			}
 
 			if reasoning {
 				reasoning = false
-				emit("reasoning", "\n")
+				handler.emitReasoning("\n")
 			}
 
 			content.WriteString(resp.Choices[0].Delta.Content)
-			emit("content", resp.Choices[0].Delta.Content)
+			handler.emitContent(resp.Choices[0].Delta.Content)
 		}
 	}
 
