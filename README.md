@@ -1,4 +1,18 @@
 # pagantic
 
-A small generic agent framework built on top of the Kronk SDK, designed to be a playground for experimenting with agent architectures and LLM interactions.
-It is not intended for production use, but rather as a learning tool and a base for prototyping.
+Generic agent framework for experimenting with agent architectures and LLM interactions.
+Uses [kronk](https://github.com/ardanlabs/kronk) for LLM engine access and model infrastructure management.
+Not intended for production use - learning tool and prototyping base.
+
+## Packages
+
+- **agent** - Multi-agent framework with tool loop, structured output, and tool registry
+- **llm** - Streaming response parsing and LLM interaction utilities
+- **tui** - Terminal UI primitives, REPL, and agent-harness for CLI apps
+- **kronk** - Kronk SDK lifecycle wrapper (install, load, init)
+
+## Examples
+
+- **examples/simple-chat** - Minimal interactive chat REPL
+- **examples/tool-use** - Chat with a custom Go tool (dice roller)
+- **examples/structured-output** - SpecializedAgent with JSON schema output

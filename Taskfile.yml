@@ -52,6 +52,13 @@ tasks:
       - golangci-lint run --fix ./...
       - echo lint-fix done
 
+  arch-lint:
+    desc: Run go-arch-lint to check package dependencies and architectural rules
+    silent: true
+    cmds:
+      - go-arch-lint check
+      - echo arch-lint done
+
   deadcode:
     desc: Check for unreachable functions in cmd entry points
     silent: true
@@ -76,10 +83,26 @@ tasks:
       - task: vet
       - task: fmt
       - task: lint
-      # - task: deadcode
+      - task: arch-lint
+      - task: deadcode
       - task: test
 
   # --- running stuff ---
+
+  run-simple-chat:
+    desc: Run the simple-chat example
+    cmds:
+      - go run examples/simple-chat/main.go
+
+  run-tool-use:
+    desc: Run the tool-use example
+    cmds:
+      - go run examples/tool-use/main.go
+
+  run-structured-output:
+    desc: Run the structured-output example
+    cmds:
+      - go run examples/structured-output/main.go
 
   # --- maintenance ---
 

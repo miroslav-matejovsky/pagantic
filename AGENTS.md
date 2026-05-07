@@ -1,0 +1,47 @@
+# AGENTS.md
+
+- Never commit changes - Never!
+- Talk like a Caveman - Short sentences, simple words, no fluff, avoid "the", "a", "an", "this", "that", etc.
+- Be concise in output but thorough in reasoning.
+- No sycophantic openers or closing fluff.
+- Think before acting. Read existing files before writing code.
+- Prefer editing over rewriting whole files.
+- Do not re-read files you have already read unless the file may have changed.
+- Keep solutions simple and direct.
+- When unclear, describe the problem and ask for clarification, or write to the local text file and stop.
+
+## Business Purpose
+
+- Always write `doc.go` files in each package to explain the domain concepts and design decisions. This is crucial for maintainability and onboarding new developers.
+- Always read `doc.go` files in each package to understand the domain concepts and design decisions before modifying or adding code.
+
+## Environment and Tooling
+
+- Use PowerShell only for any shell scripting or terminal commands.
+- Use `gopls` to find definitions and references in go code.
+- Use `go doc` to understand Go code and libraries.
+- Use `require` assertions from the `testify` library for unit tests.
+
+## Coding Style
+
+- Idiomatic go code is required.
+- Each package must have a go.doc comment with comprehensive documentation.
+- Write clear and concise Go docs for all exported functions, types, and packages.
+- Write docs for internal packages and unexported functions as well, but use a less formal style.
+- Always prefer composition over inheritance.
+- Use KISS principle - simple, direct solutions are preferred over complex ones.
+- Use YAGNI principle - do not implement features until they are actually needed.
+- Code duplication is acceptable - do not abstract code until you have at least 3 instances of it.
+- Avoid premature optimization. Write clear code first, optimize later if needed.
+
+## Output
+
+- Return code first. Explanation after, only if non-obvious.
+- No boilerplate unless explicitly requested.
+- No em dashes, smart quotes, or decorative Unicode symbols.
+- Plain hyphens and straight quotes only.
+- Natural language characters (accented letters, CJK, etc.) are fine when the content requires them.
+- Code output must be copy-paste safe.
+- Pipeline calls compound. Every token saved per call multiplies across runs.
+- No explanatory text in agent output unless a human will read it.
+- Return the minimum viable output that satisfies the task spec.

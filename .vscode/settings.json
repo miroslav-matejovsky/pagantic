@@ -65,14 +65,18 @@
   "cSpell.words": [
     "ardanlabs",
     "deadcode",
+    "gopls",
     "gotestsum",
     "kronk",
     "LASTEXITCODE",
     "matejovsky",
     "miroslav",
     "pagantic",
+    "Qwen",
     "stretchr",
     "Taskfile",
+    "toolcall",
+    "unsloth",
     "venv"
   ]
 }

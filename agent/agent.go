@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"github.com/ardanlabs/kronk/sdk/kronk/model"
@@ -136,6 +137,15 @@ func (a *Agent) ChatStructured(ctx context.Context, userMessage string, jsonSche
 	result, err := llm.StreamResponse(a.cfg.Engine, messages, ch, a.cfg.OnToken)
 	if err != nil {
 		return llm.ChatResult{}, fmt.Errorf("agent structured stream: %w", err)
+	}
+	// Grammar-constrained generation may truncate trailing closers.
+	// Only attempt repair when output is not already valid JSON.
+	if !json.Valid([]byte(result.Content)) {
+		repaired := repairJSON(result.Content)
+		if !json.Valid([]byte(repaired)) {
+			return llm.ChatResult{}, fmt.Errorf("agent structured output: invalid JSON after repair: %s", repaired)
+		}
+		result.Content = repaired
 	}
 	return result, nil
 }
