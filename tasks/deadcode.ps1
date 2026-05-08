@@ -1,12 +1,16 @@
 # Check for unreachable functions in examples
+
 $out = deadcode ./examples/... 2>&1
+
 if ($LASTEXITCODE -ne 0) {
-    Write-Host $out
+    $out | Out-String -Stream | ForEach-Object { Write-Host $_ }
     exit 1
 }
+
 if ($out) {
     Write-Host "dead code found:"
-    Write-Host $out
+    $out | Out-String -Stream | ForEach-Object { Write-Host $_ }
     exit 1
 }
+
 Write-Host "no dead code found"
