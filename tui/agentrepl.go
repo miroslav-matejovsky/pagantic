@@ -10,7 +10,7 @@ import (
 
 	core "github.com/miroslav-matejovsky/pagantic/layers/00_core"
 	inference "github.com/miroslav-matejovsky/pagantic/layers/01_inference"
-	"github.com/miroslav-matejovsky/pagantic/orchestrate"
+	orchestrate "github.com/miroslav-matejovsky/pagantic/layers/02_orchestrate"
 	"github.com/miroslav-matejovsky/pagantic/tool"
 )
 
