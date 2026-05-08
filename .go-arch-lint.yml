@@ -32,7 +32,7 @@ components:
   tui: { in: tui }
 
 deps:
-  core: {}
+  # core: {}
   prompt:
     mayDependOn: [core]
   memory:
