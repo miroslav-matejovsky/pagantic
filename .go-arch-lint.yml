@@ -24,7 +24,7 @@ components:
   L05_constraint: { in: layers/05_constraint }
   L06_rerank: { in: layers/06_rerank }
   L07_validate: { in: layers/07_validate }
-  prompt: { in: prompt }
+  L08_prompt: { in: layers/08_prompt }
   memory: { in: memory }
   observe: { in: observe }
   api: { in: api }
@@ -47,7 +47,7 @@ deps:
   # L06_rerank: {}
   L07_validate:
     mayDependOn: [L00_core, L05_constraint]
-  prompt:
+  L08_prompt:
     mayDependOn: [L00_core]
   memory:
     mayDependOn: [L00_core]
