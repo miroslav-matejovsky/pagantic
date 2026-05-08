@@ -11,7 +11,7 @@ import (
 	tool "github.com/miroslav-matejovsky/pagantic/layers/04_tool"
 	constraint "github.com/miroslav-matejovsky/pagantic/layers/05_constraint"
 	memory "github.com/miroslav-matejovsky/pagantic/layers/09_memory"
-	"github.com/miroslav-matejovsky/pagantic/observe"
+	observe "github.com/miroslav-matejovsky/pagantic/layers/10_observe"
 )
 
 const defaultMaxTokens = 2048

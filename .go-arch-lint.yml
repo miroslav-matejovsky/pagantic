@@ -26,7 +26,7 @@ components:
   L07_validate: { in: layers/07_validate }
   L08_prompt: { in: layers/08_prompt }
   L09_memory: { in: layers/09_memory }
-  observe: { in: observe }
+  L10_observe: { in: layers/10_observe }
   api: { in: api }
   kronk: { in: kronk }
   tui: { in: tui }
@@ -37,11 +37,11 @@ deps:
     mayDependOn: [L00_core]
     canUse: [kronk-sdk]
   L02_orchestrate:
-    mayDependOn: [L00_core, L01_inference, L04_tool, L05_constraint, L09_memory, observe]
+    mayDependOn: [L00_core, L01_inference, L04_tool, L05_constraint, L09_memory, L10_observe]
   L03_context:
     mayDependOn: [L00_core]
   L04_tool:
-    mayDependOn: [L00_core, observe]
+    mayDependOn: [L00_core, L10_observe]
   L05_constraint:
     mayDependOn: [L00_core]
   # L06_rerank: {}
@@ -51,11 +51,11 @@ deps:
     mayDependOn: [L00_core]
   L09_memory:
     mayDependOn: [L00_core]
-  observe:
+  L10_observe:
     mayDependOn: [L00_core]
   api:
-    mayDependOn: [L00_core, L02_orchestrate, observe]
+    mayDependOn: [L00_core, L02_orchestrate, L10_observe]
   kronk:
     canUse: [kronk-sdk]
   tui:
-    mayDependOn: [api, L00_core, L01_inference, L02_orchestrate, L04_tool, observe]
+    mayDependOn: [api, L00_core, L01_inference, L02_orchestrate, L04_tool, L10_observe]

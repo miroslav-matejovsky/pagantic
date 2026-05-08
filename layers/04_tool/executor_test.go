@@ -7,7 +7,7 @@ import (
 
 	core "github.com/miroslav-matejovsky/pagantic/layers/00_core"
 	tool "github.com/miroslav-matejovsky/pagantic/layers/04_tool"
-	"github.com/miroslav-matejovsky/pagantic/observe"
+	observe "github.com/miroslav-matejovsky/pagantic/layers/10_observe"
 	"github.com/stretchr/testify/require"
 )
 

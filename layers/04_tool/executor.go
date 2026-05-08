@@ -6,7 +6,7 @@ import (
 	"time"
 
 	core "github.com/miroslav-matejovsky/pagantic/layers/00_core"
-	"github.com/miroslav-matejovsky/pagantic/observe"
+	observe "github.com/miroslav-matejovsky/pagantic/layers/10_observe"
 )
 
 // ToolExecutor wraps registry with observability.
