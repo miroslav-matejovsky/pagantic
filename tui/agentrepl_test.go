@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	inference "github.com/miroslav-matejovsky/pagantic/layers/01_inference"
-	"github.com/miroslav-matejovsky/pagantic/tool"
+	tool "github.com/miroslav-matejovsky/pagantic/layers/04_tool"
 )
 
 type fakeEngine struct{}

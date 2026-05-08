@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	core "github.com/miroslav-matejovsky/pagantic/layers/00_core"
-	"github.com/miroslav-matejovsky/pagantic/tool"
+	tool "github.com/miroslav-matejovsky/pagantic/layers/04_tool"
 	"github.com/stretchr/testify/require"
 )
 

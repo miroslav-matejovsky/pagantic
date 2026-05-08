@@ -7,7 +7,7 @@ import (
 
 	core "github.com/miroslav-matejovsky/pagantic/layers/00_core"
 	inference "github.com/miroslav-matejovsky/pagantic/layers/01_inference"
-	"github.com/miroslav-matejovsky/pagantic/tool"
+	tool "github.com/miroslav-matejovsky/pagantic/layers/04_tool"
 	"github.com/stretchr/testify/require"
 )
 

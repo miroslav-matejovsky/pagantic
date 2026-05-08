@@ -20,7 +20,7 @@ components:
   inference: { in: layers/01_inference }
   orchestrate: { in: layers/02_orchestrate }
   context: { in: layers/03_context }
-  tool: { in: tool }
+  tool: { in: layers/04_tool }
   constraint: { in: constraint }
   rerank: { in: rerank }
   validate: { in: validate }

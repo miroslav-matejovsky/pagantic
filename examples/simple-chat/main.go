@@ -8,7 +8,7 @@ import (
 
 	"github.com/miroslav-matejovsky/pagantic/kronk"
 	inference "github.com/miroslav-matejovsky/pagantic/layers/01_inference"
-	"github.com/miroslav-matejovsky/pagantic/tool"
+	tool "github.com/miroslav-matejovsky/pagantic/layers/04_tool"
 	"github.com/miroslav-matejovsky/pagantic/tui"
 )
 

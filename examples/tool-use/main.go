@@ -11,7 +11,7 @@ import (
 	"github.com/miroslav-matejovsky/pagantic/kronk"
 	core "github.com/miroslav-matejovsky/pagantic/layers/00_core"
 	inference "github.com/miroslav-matejovsky/pagantic/layers/01_inference"
-	"github.com/miroslav-matejovsky/pagantic/tool"
+	tool "github.com/miroslav-matejovsky/pagantic/layers/04_tool"
 	"github.com/miroslav-matejovsky/pagantic/tui"
 )
 
