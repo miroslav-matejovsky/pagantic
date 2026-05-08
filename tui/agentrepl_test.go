@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/miroslav-matejovsky/pagantic/inference"
+	inference "github.com/miroslav-matejovsky/pagantic/layers/01_inference"
 	"github.com/miroslav-matejovsky/pagantic/tool"
 )
 

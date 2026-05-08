@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/miroslav-matejovsky/pagantic/inference"
+	inference "github.com/miroslav-matejovsky/pagantic/layers/01_inference"
 )
 
 // UsageStats holds token usage statistics for display purposes.

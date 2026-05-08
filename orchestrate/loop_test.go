@@ -5,8 +5,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/miroslav-matejovsky/pagantic/inference"
 	core "github.com/miroslav-matejovsky/pagantic/layers/00_core"
+	inference "github.com/miroslav-matejovsky/pagantic/layers/01_inference"
 	"github.com/miroslav-matejovsky/pagantic/tool"
 	"github.com/stretchr/testify/require"
 )

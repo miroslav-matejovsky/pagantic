@@ -17,7 +17,7 @@ vendors:
 
 components:
   core: { in: layers/00_core }
-  inference: { in: inference }
+  inference: { in: layers/01_inference }
   orchestrate: { in: orchestrate }
   context: { in: context }
   tool: { in: tool }

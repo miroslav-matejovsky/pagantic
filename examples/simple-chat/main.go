@@ -6,8 +6,8 @@ import (
 	"os"
 	"os/signal"
 
-	"github.com/miroslav-matejovsky/pagantic/inference"
 	"github.com/miroslav-matejovsky/pagantic/kronk"
+	inference "github.com/miroslav-matejovsky/pagantic/layers/01_inference"
 	"github.com/miroslav-matejovsky/pagantic/tool"
 	"github.com/miroslav-matejovsky/pagantic/tui"
 )
