@@ -66,6 +66,9 @@
   "cSpell.words": [
     "ardanlabs",
     "deadcode",
+    "Feedforward",
+    "GBNF",
+    "golangci",
     "gopls",
     "gotestsum",
     "kronk",
@@ -75,8 +78,11 @@
     "pagantic",
     "Qwen",
     "rerank",
+    "Reranker",
+    "reranking",
     "stretchr",
     "Taskfile",
+    "tmpl",
     "toolcall",
     "unsloth",
     "venv"

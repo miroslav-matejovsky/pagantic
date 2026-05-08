@@ -8,10 +8,10 @@ import (
 	"os/signal"
 	"strings"
 
-	"github.com/miroslav-matejovsky/pagantic/core"
-	"github.com/miroslav-matejovsky/pagantic/inference"
 	"github.com/miroslav-matejovsky/pagantic/kronk"
-	"github.com/miroslav-matejovsky/pagantic/tool"
+	core "github.com/miroslav-matejovsky/pagantic/layers/00_core"
+	inference "github.com/miroslav-matejovsky/pagantic/layers/01_inference"
+	tool "github.com/miroslav-matejovsky/pagantic/layers/04_tool"
 	"github.com/miroslav-matejovsky/pagantic/tui"
 )
 

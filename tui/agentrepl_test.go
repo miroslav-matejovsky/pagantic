@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/miroslav-matejovsky/pagantic/inference"
-	"github.com/miroslav-matejovsky/pagantic/tool"
+	inference "github.com/miroslav-matejovsky/pagantic/layers/01_inference"
+	tool "github.com/miroslav-matejovsky/pagantic/layers/04_tool"
 )
 
 type fakeEngine struct{}

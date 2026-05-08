@@ -2,6 +2,7 @@
 
 LLM harness system with deterministic control architecture around probabilistic inference.
 Uses [kronk](https://github.com/ardanlabs/kronk) for LLM engine access.
+Inspired by [Harness engineering for coding agent users](https://martinfowler.com/articles/harness-engineering.html).
 
 ## Architecture
 
