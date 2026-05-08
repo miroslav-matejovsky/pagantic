@@ -10,7 +10,7 @@ import (
 	inference "github.com/miroslav-matejovsky/pagantic/layers/01_inference"
 	tool "github.com/miroslav-matejovsky/pagantic/layers/04_tool"
 	constraint "github.com/miroslav-matejovsky/pagantic/layers/05_constraint"
-	"github.com/miroslav-matejovsky/pagantic/memory"
+	memory "github.com/miroslav-matejovsky/pagantic/layers/09_memory"
 	"github.com/miroslav-matejovsky/pagantic/observe"
 )
 
