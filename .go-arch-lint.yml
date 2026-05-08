@@ -16,12 +16,12 @@ vendors:
     in: "github.com/ardanlabs/kronk/sdk/**"
 
 components:
-  core: { in: layers/00_core }
-  inference: { in: layers/01_inference }
-  orchestrate: { in: layers/02_orchestrate }
-  context: { in: layers/03_context }
-  tool: { in: layers/04_tool }
-  constraint: { in: layers/05_constraint }
+  L00_core: { in: layers/00_core }
+  L01_inference: { in: layers/01_inference }
+  L02_orchestrate: { in: layers/02_orchestrate }
+  L03_context: { in: layers/03_context }
+  L04_tool: { in: layers/04_tool }
+  L05_constraint: { in: layers/05_constraint }
   rerank: { in: rerank }
   validate: { in: validate }
   prompt: { in: prompt }
@@ -32,31 +32,29 @@ components:
   tui: { in: tui }
 
 deps:
-  # core: {}
-  prompt:
-    mayDependOn: [core]
-  memory:
-    mayDependOn: [core]
-  observe:
-    mayDependOn: [core]
-  constraint:
-    mayDependOn: [core]
-  validate:
-    mayDependOn: [core, constraint]
-  inference:
-    mayDependOn: [core, observe]
+  # L00_core: {}
+  L01_inference:
+    mayDependOn: [L00_core]
     canUse: [kronk-sdk]
-  tool:
-    mayDependOn: [core, observe]
-  context:
-    mayDependOn: [core, observe]
-  rerank:
-    mayDependOn: [core, observe]
-  orchestrate:
-    mayDependOn: [core, inference, tool, prompt, memory, constraint, validate, context, rerank, observe]
+  L02_orchestrate:
+    mayDependOn: [L00_core, L01_inference, L04_tool, L05_constraint, memory, observe]
+  L03_context:
+    mayDependOn: [L00_core]
+  L04_tool:
+    mayDependOn: [L00_core, observe]
+  L05_constraint:
+    mayDependOn: [L00_core]
+  prompt:
+    mayDependOn: [L00_core]
+  memory:
+    mayDependOn: [L00_core]
+  observe:
+    mayDependOn: [L00_core]
+  validate:
+    mayDependOn: [L00_core, L05_constraint]
   api:
-    mayDependOn: [core, orchestrate, observe]
+    mayDependOn: [L00_core, L02_orchestrate, observe]
   kronk:
     canUse: [kronk-sdk]
   tui:
-    mayDependOn: [api, core, inference, orchestrate, tool, observe]
+    mayDependOn: [api, L00_core, L01_inference, L02_orchestrate, L04_tool, observe]
