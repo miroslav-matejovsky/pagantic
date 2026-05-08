@@ -2,6 +2,8 @@ package validate
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 
 	"github.com/miroslav-matejovsky/pagantic/constraint"
 )
@@ -15,7 +17,11 @@ type RepairStrategy interface {
 // JSONRepairStrategy wraps constraint.RepairJSON.
 type JSONRepairStrategy struct{}
 
-// Repair tries simple JSON repair.
+// Repair tries simple JSON repair and returns an error if the result is still invalid JSON.
 func (s *JSONRepairStrategy) Repair(_ context.Context, output string, _ []string) (string, error) {
-	return constraint.RepairJSON(output), nil
+	repaired := constraint.RepairJSON(output)
+	if !json.Valid([]byte(repaired)) {
+		return repaired, fmt.Errorf("validate: repair did not produce valid JSON")
+	}
+	return repaired, nil
 }

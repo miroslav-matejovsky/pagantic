@@ -17,8 +17,6 @@ type ToolExecutor struct {
 
 // Execute runs tool call and records events.
 func (te *ToolExecutor) Execute(ctx context.Context, call core.ToolCall) core.ToolResult {
-	_ = ctx
-
 	start := time.Now()
 	te.record(observe.Event{
 		Timestamp: start,
@@ -34,6 +32,23 @@ func (te *ToolExecutor) Execute(ctx context.Context, call core.ToolCall) core.To
 	result := core.ToolResult{
 		CallID: call.ID,
 		Name:   call.Name,
+	}
+
+	if err := ctx.Err(); err != nil {
+		result.Content = err.Error()
+		result.IsError = true
+		te.record(observe.Event{
+			Timestamp: time.Now(),
+			Layer:     "tool",
+			Action:    "execute_cancelled",
+			Data: map[string]any{
+				"call_id": call.ID,
+				"name":    call.Name,
+			},
+			Duration: time.Since(start),
+			Error:    err,
+		})
+		return result
 	}
 
 	if te == nil || te.Registry == nil {

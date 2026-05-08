@@ -75,6 +75,30 @@ func TestToolExecutor_ExecuteFailure(t *testing.T) {
 	require.ErrorIs(t, events[1].Error, boom)
 }
 
+func TestToolExecutor_CancelledContextReturnsError(t *testing.T) {
+	log := &observe.InMemoryEventLog{}
+	executor := tool.ToolExecutor{
+		Registry: tool.NewRegistry(&fakeTool{name: "echo", toolType: tool.TypeGo, available: true, output: "done"}),
+		Observer: log,
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // already cancelled
+
+	result := executor.Execute(ctx, core.ToolCall{
+		ID:   "call-cancelled",
+		Name: "echo",
+	})
+
+	require.True(t, result.IsError)
+	require.Contains(t, result.Content, "context canceled")
+
+	events := log.Events()
+	require.Len(t, events, 2)
+	require.Equal(t, "execute_start", events[0].Action)
+	require.Equal(t, "execute_cancelled", events[1].Action)
+}
+
 func TestToolExecutor_NilObserver(t *testing.T) {
 	executor := tool.ToolExecutor{
 		Registry: tool.NewRegistry(&fakeTool{name: "echo", toolType: tool.TypeGo, available: true, output: "ok"}),

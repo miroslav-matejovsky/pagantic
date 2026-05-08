@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"path"
 	"path/filepath"
 	"strings"
 
@@ -102,7 +103,6 @@ loop:
 		case model.FinishReasonStop:
 			if delta != nil && delta.Content != "" {
 				if reasoning {
-					reasoning = false
 					ka.handler.emitReasoning("\n")
 				}
 				content.WriteString(delta.Content)
@@ -112,7 +112,6 @@ loop:
 
 		case model.FinishReasonTool:
 			if reasoning {
-				reasoning = false
 				ka.handler.emitReasoning("\n")
 			}
 
@@ -189,7 +188,7 @@ func (ka *KronkAdapter) ModelInfo() ModelInfo {
 	cfg := ka.chat.ModelConfig()
 	name := ""
 	if len(cfg.ModelFiles) > 0 {
-		name = filepath.Base(cfg.ModelFiles[0])
+		name = path.Base(filepath.ToSlash(cfg.ModelFiles[0]))
 	}
 
 	return ModelInfo{

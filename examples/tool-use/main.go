@@ -94,7 +94,7 @@ func (d *diceTool) Definition() core.ToolDefinition {
 					Description: "Number of dice to roll (default 1)",
 				},
 			},
-			Required: []string{"sides"},
+			Required: []string{},
 		},
 	}
 }

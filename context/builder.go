@@ -11,7 +11,7 @@ import (
 // ContextBuilder assembles retrieved chunks into messages for model.
 type ContextBuilder struct {
 	Retriever Retriever
-	MaxChunks int // max chunks to include, 0 means use all retrieved
+	MaxChunks int // max chunks to include; 0 or negative means use all retrieved
 }
 
 // Build retrieves relevant content and assembles it into context messages.
@@ -22,7 +22,7 @@ func (cb *ContextBuilder) Build(ctx context.Context, query string) ([]core.Messa
 
 	limit := cb.MaxChunks
 	if limit < 0 {
-		limit = 10
+		limit = 0
 	}
 
 	chunks, err := cb.Retriever.Retrieve(ctx, query, limit)

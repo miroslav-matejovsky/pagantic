@@ -96,7 +96,7 @@ func TestConversationBufferMessagesReturnsCopy(t *testing.T) {
 
 	msgs := cb.Messages()
 	msgs[0].Content = "changed"
-	msgs = append(msgs, core.NewAssistantMessage("extra"))
+	_ = append(msgs, core.NewAssistantMessage("extra"))
 
 	stored := cb.Messages()
 	require.Len(t, stored, 1)
