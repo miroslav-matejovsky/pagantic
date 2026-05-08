@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/miroslav-matejovsky/pagantic/core"
+	core "github.com/miroslav-matejovsky/pagantic/layers/00_core"
 )
 
 // InMemoryTracer stores span records in memory.

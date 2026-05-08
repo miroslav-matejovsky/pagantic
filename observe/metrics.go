@@ -3,7 +3,7 @@ package observe
 import (
 	"time"
 
-	"github.com/miroslav-matejovsky/pagantic/core"
+	core "github.com/miroslav-matejovsky/pagantic/layers/00_core"
 )
 
 // MetricsCollector stores counters and timings.

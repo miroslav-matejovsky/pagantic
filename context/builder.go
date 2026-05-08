@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/miroslav-matejovsky/pagantic/core"
+	core "github.com/miroslav-matejovsky/pagantic/layers/00_core"
 )
 
 // ContextBuilder assembles retrieved chunks into messages for model.

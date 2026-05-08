@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/miroslav-matejovsky/pagantic/core"
 	"github.com/miroslav-matejovsky/pagantic/inference"
+	core "github.com/miroslav-matejovsky/pagantic/layers/00_core"
 	"github.com/miroslav-matejovsky/pagantic/observe"
 	"github.com/miroslav-matejovsky/pagantic/tool"
 )

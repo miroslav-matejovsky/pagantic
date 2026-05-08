@@ -1,6 +1,6 @@
 package tool
 
-import "github.com/miroslav-matejovsky/pagantic/core"
+import core "github.com/miroslav-matejovsky/pagantic/layers/00_core"
 
 // ToolType says how tool runs.
 type ToolType string

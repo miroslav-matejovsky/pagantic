@@ -1,6 +1,6 @@
 package memory
 
-import "github.com/miroslav-matejovsky/pagantic/core"
+import core "github.com/miroslav-matejovsky/pagantic/layers/00_core"
 
 // WorkingMemory holds transient context for current execution step.
 // Reset between steps by orchestration layer.

@@ -8,8 +8,8 @@ import (
 	"io"
 	"time"
 
-	"github.com/miroslav-matejovsky/pagantic/core"
 	"github.com/miroslav-matejovsky/pagantic/inference"
+	core "github.com/miroslav-matejovsky/pagantic/layers/00_core"
 	"github.com/miroslav-matejovsky/pagantic/orchestrate"
 	"github.com/miroslav-matejovsky/pagantic/tool"
 )

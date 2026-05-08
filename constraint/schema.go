@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/miroslav-matejovsky/pagantic/core"
+	core "github.com/miroslav-matejovsky/pagantic/layers/00_core"
 )
 
 // SchemaValidator validates JSON output against core.Schema.

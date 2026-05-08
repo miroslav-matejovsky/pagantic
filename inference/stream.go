@@ -1,6 +1,6 @@
 package inference
 
-import "github.com/miroslav-matejovsky/pagantic/core"
+import core "github.com/miroslav-matejovsky/pagantic/layers/00_core"
 
 // StreamHandler receives typed events during streaming inference.
 type StreamHandler struct {

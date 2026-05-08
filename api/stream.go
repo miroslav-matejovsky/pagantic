@@ -1,6 +1,6 @@
 package api
 
-import "github.com/miroslav-matejovsky/pagantic/core"
+import core "github.com/miroslav-matejovsky/pagantic/layers/00_core"
 
 // StreamChunk is single piece of streaming API output.
 type StreamChunk struct {

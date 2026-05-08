@@ -5,7 +5,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/miroslav-matejovsky/pagantic/core"
+	core "github.com/miroslav-matejovsky/pagantic/layers/00_core"
 	"github.com/miroslav-matejovsky/pagantic/observe"
 )
 

@@ -1,6 +1,6 @@
 package observe
 
-import "github.com/miroslav-matejovsky/pagantic/core"
+import core "github.com/miroslav-matejovsky/pagantic/layers/00_core"
 
 // CostTracker stores model usage and cost.
 type CostTracker interface {

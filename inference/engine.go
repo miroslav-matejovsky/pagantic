@@ -3,7 +3,7 @@ package inference
 import (
 	"context"
 
-	"github.com/miroslav-matejovsky/pagantic/core"
+	core "github.com/miroslav-matejovsky/pagantic/layers/00_core"
 )
 
 // Engine is core inference abstraction.

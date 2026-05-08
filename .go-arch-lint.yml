@@ -16,7 +16,7 @@ vendors:
     in: "github.com/ardanlabs/kronk/sdk/**"
 
 components:
-  core: { in: core }
+  core: { in: layers/00_core }
   inference: { in: inference }
   orchestrate: { in: orchestrate }
   context: { in: context }

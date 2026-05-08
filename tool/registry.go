@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/miroslav-matejovsky/pagantic/core"
+	core "github.com/miroslav-matejovsky/pagantic/layers/00_core"
 )
 
 // ToolStatus is availability state for one tool.

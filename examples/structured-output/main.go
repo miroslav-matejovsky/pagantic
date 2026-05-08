@@ -7,9 +7,9 @@ import (
 	"os/signal"
 	"time"
 
-	"github.com/miroslav-matejovsky/pagantic/core"
 	"github.com/miroslav-matejovsky/pagantic/inference"
 	"github.com/miroslav-matejovsky/pagantic/kronk"
+	core "github.com/miroslav-matejovsky/pagantic/layers/00_core"
 	"github.com/miroslav-matejovsky/pagantic/orchestrate"
 	"github.com/miroslav-matejovsky/pagantic/tui"
 )

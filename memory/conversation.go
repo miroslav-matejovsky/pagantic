@@ -1,6 +1,6 @@
 package memory
 
-import "github.com/miroslav-matejovsky/pagantic/core"
+import core "github.com/miroslav-matejovsky/pagantic/layers/00_core"
 
 // ConversationBuffer stores message history with optional size limit.
 // It is primary state container for multi-turn conversations.

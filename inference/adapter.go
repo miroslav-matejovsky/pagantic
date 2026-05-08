@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/ardanlabs/kronk/sdk/kronk/model"
-	"github.com/miroslav-matejovsky/pagantic/core"
+	core "github.com/miroslav-matejovsky/pagantic/layers/00_core"
 )
 
 // KronkAdapter wraps kronk chat engine and implements Engine.

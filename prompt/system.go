@@ -3,7 +3,7 @@ package prompt
 import (
 	"strings"
 
-	"github.com/miroslav-matejovsky/pagantic/core"
+	core "github.com/miroslav-matejovsky/pagantic/layers/00_core"
 )
 
 // SystemPrompt builds a system message from a base prompt, optional

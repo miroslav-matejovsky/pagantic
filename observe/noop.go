@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/miroslav-matejovsky/pagantic/core"
+	core "github.com/miroslav-matejovsky/pagantic/layers/00_core"
 )
 
 // NoOpTracer does nothing.
