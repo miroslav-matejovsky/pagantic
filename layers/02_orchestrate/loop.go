@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/miroslav-matejovsky/pagantic/constraint"
 	core "github.com/miroslav-matejovsky/pagantic/layers/00_core"
 	inference "github.com/miroslav-matejovsky/pagantic/layers/01_inference"
 	tool "github.com/miroslav-matejovsky/pagantic/layers/04_tool"
+	constraint "github.com/miroslav-matejovsky/pagantic/layers/05_constraint"
 	"github.com/miroslav-matejovsky/pagantic/memory"
 	"github.com/miroslav-matejovsky/pagantic/observe"
 )

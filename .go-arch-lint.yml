@@ -21,7 +21,7 @@ components:
   orchestrate: { in: layers/02_orchestrate }
   context: { in: layers/03_context }
   tool: { in: layers/04_tool }
-  constraint: { in: constraint }
+  constraint: { in: layers/05_constraint }
   rerank: { in: rerank }
   validate: { in: validate }
   prompt: { in: prompt }

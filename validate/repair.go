@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/miroslav-matejovsky/pagantic/constraint"
+	constraint "github.com/miroslav-matejovsky/pagantic/layers/05_constraint"
 )
 
 // RepairStrategy tries to fix invalid output.
