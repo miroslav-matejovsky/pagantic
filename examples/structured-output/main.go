@@ -7,9 +7,10 @@ import (
 	"os/signal"
 	"time"
 
-	"github.com/ardanlabs/kronk/sdk/kronk/model"
-	"github.com/miroslav-matejovsky/pagantic/agent"
+	"github.com/miroslav-matejovsky/pagantic/core"
+	"github.com/miroslav-matejovsky/pagantic/inference"
 	"github.com/miroslav-matejovsky/pagantic/kronk"
+	"github.com/miroslav-matejovsky/pagantic/orchestrate"
 	"github.com/miroslav-matejovsky/pagantic/tui"
 )
 
@@ -19,31 +20,32 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 
-	engine, cleanup, err := kronk.Load(ctx, kronk.Config{ModelSource: llmModel})
+	krn, cleanup, err := kronk.Load(ctx, kronk.Config{ModelSource: llmModel})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to load engine: %v\n", err)
 		os.Exit(1)
 	}
 	defer cleanup()
 
-	schema := model.D{
-		"type": "object",
-		"properties": model.D{
-			"sentiment": model.D{
-				"type": "string",
-				"enum": []any{"positive", "neutral", "negative"},
+	engine := inference.NewKronkAdapter(krn, nil)
+	schema := core.Schema{
+		Type: "object",
+		Properties: map[string]core.Schema{
+			"sentiment": {
+				Type: "string",
+				Enum: []string{"positive", "neutral", "negative"},
 			},
-			"confidence": model.D{
-				"type": "number",
+			"confidence": {
+				Type: "number",
 			},
-			"explanation": model.D{
-				"type": "string",
+			"explanation": {
+				Type: "string",
 			},
 		},
-		"required": []string{"sentiment", "confidence", "explanation"},
+		Required: []string{"sentiment", "confidence", "explanation"},
 	}
 
-	sa := agent.NewSpecialized(agent.SpecializedConfig{
+	sa := orchestrate.NewSpecializedLoop(orchestrate.SpecializedConfig{
 		SystemPrompt: "Analyze the sentiment of the given text. Return structured JSON with sentiment, confidence (0-1), and a brief explanation.",
 		Engine:       engine,
 		Schema:       schema,

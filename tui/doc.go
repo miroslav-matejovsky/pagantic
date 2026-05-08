@@ -40,16 +40,18 @@
 // # Agent harness
 //
 // AgentREPL extends REPL into a full agent-harness terminal UI. It provides
-// built-in tools and chat commands, lazy LLM engine loading via a caller-supplied
-// EngineLoader func, and an Engine(ctx) getter so custom commands registered via
-// AddCommand can access the loaded engine. Configure via AgentConfig with title,
-// banner, system prompt, engine loader, tool registry, and local directory.
+// built-in tools and chat commands, lazy inference engine loading via a
+// caller-supplied EngineLoader func, and an Engine(ctx) getter so custom
+// commands registered via AddCommand can access the loaded engine. Configure
+// via AgentConfig with title, banner, system prompt, engine loader, tool
+// registry, and local directory. Chat uses orchestrate.AgentLoop and tools
+// from the tool package.
 //
 // # Rendering
 //
-// TerminalRenderer returns a *llm.StreamHandler that renders streaming
+// TerminalRenderer returns an *inference.StreamHandler that renders streaming
 // content, reasoning, and tool-call events to an io.Writer with ANSI colors.
 // FPrintUsage displays token usage statistics. UsageStats is a
 // dependency-free value type for passing usage data across package
-// boundaries without importing LLM-specific packages.
+// boundaries without importing inference engine packages.
 package tui

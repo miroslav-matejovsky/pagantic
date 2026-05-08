@@ -16,28 +16,47 @@ vendors:
     in: "github.com/ardanlabs/kronk/sdk/**"
 
 components:
-  agent: { in: agent }
+  core: { in: core }
+  inference: { in: inference }
+  orchestrate: { in: orchestrate }
+  context: { in: context }
+  tool: { in: tool }
+  constraint: { in: constraint }
+  rerank: { in: rerank }
+  validate: { in: validate }
+  prompt: { in: prompt }
+  memory: { in: memory }
+  observe: { in: observe }
+  api: { in: api }
   kronk: { in: kronk }
-  llm: { in: llm }
   tui: { in: tui }
 
 deps:
-
-  llm:
-    canUse:
-      - kronk-sdk
-
+  # core: {}
+  prompt:
+    mayDependOn: [core]
+  memory:
+    mayDependOn: [core]
+  observe:
+    mayDependOn: [core]
+  constraint:
+    mayDependOn: [core]
+  validate:
+    mayDependOn: [core, constraint]
+  inference:
+    mayDependOn: [core, observe]
+    canUse: [kronk-sdk]
+  tool:
+    mayDependOn: [core, observe]
+  context:
+    mayDependOn: [core, observe]
+  rerank:
+    mayDependOn: [core, observe]
+  orchestrate:
+    mayDependOn: [core, inference, tool, prompt, memory, constraint, validate, context, rerank, observe]
+  api:
+    mayDependOn: [core, orchestrate, observe]
   kronk:
-    canUse:
-      - kronk-sdk
-
-  agent:
-    canUse:
-      - kronk-sdk
-    mayDependOn:
-      - llm
-
+    canUse: [kronk-sdk]
   tui:
-    mayDependOn:
-      - agent
-      - llm
+    mayDependOn: [api, core, inference, orchestrate, tool, observe]

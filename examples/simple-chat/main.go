@@ -6,9 +6,9 @@ import (
 	"os"
 	"os/signal"
 
-	"github.com/miroslav-matejovsky/pagantic/agent"
+	"github.com/miroslav-matejovsky/pagantic/inference"
 	"github.com/miroslav-matejovsky/pagantic/kronk"
-	"github.com/miroslav-matejovsky/pagantic/llm"
+	"github.com/miroslav-matejovsky/pagantic/tool"
 	"github.com/miroslav-matejovsky/pagantic/tui"
 )
 
@@ -18,14 +18,18 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 
-	registry := agent.NewRegistry()
+	registry := tool.NewRegistry()
 
 	repl := tui.NewAgentREPL(tui.AgentConfig{
 		Title:        "simple-chat",
 		Banner:       "Type 'chat' to start chatting, 'quit' to exit.",
 		SystemPrompt: "You are a helpful assistant. Be concise.",
-		EngineLoader: func(ctx context.Context) (llm.Chat, func(), error) {
-			return kronk.Load(ctx, kronk.Config{ModelSource: llmModel})
+		EngineLoader: func(ctx context.Context) (inference.Engine, func(), error) {
+			krn, cleanup, err := kronk.Load(ctx, kronk.Config{ModelSource: llmModel})
+			if err != nil {
+				return nil, nil, err
+			}
+			return inference.NewKronkAdapter(krn, nil), cleanup, nil
 		},
 		Registry: registry,
 	})
