@@ -22,7 +22,7 @@ components:
   L03_context: { in: layers/03_context }
   L04_tool: { in: layers/04_tool }
   L05_constraint: { in: layers/05_constraint }
-  rerank: { in: rerank }
+  L06_rerank: { in: layers/06_rerank }
   validate: { in: validate }
   prompt: { in: prompt }
   memory: { in: memory }
