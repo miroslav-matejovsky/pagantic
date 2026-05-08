@@ -4,13 +4,13 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/miroslav-matejovsky/pagantic/llm"
+	"github.com/miroslav-matejovsky/pagantic/inference"
 )
 
 // UsageStats holds token usage statistics for display purposes.
-// It mirrors the display-relevant fields of LLM usage data so callers
+// It mirrors the display-relevant fields of core.TokenUsage so callers
 // can pass usage data across package boundaries without importing
-// LLM-specific packages.
+// inference-specific packages.
 type UsageStats struct {
 	PromptTokens    int
 	ReasoningTokens int
@@ -20,15 +20,15 @@ type UsageStats struct {
 	TokensPerSecond float64
 }
 
-// TerminalRenderer returns a *llm.StreamHandler that renders streaming
-// LLM/agent output to w with ANSI colors.
+// TerminalRenderer returns an *inference.StreamHandler that renders streaming
+// inference and orchestration output to w with ANSI colors.
 //
 // Rendering:
 //   - reasoning tokens in red
 //   - content tokens in default color
 //   - tool calls in green with [TOOL] prefix
-func TerminalRenderer(w io.Writer) *llm.StreamHandler {
-	return &llm.StreamHandler{
+func TerminalRenderer(w io.Writer) *inference.StreamHandler {
+	return &inference.StreamHandler{
 		OnReasoning: func(text string) {
 			_, _ = fmt.Fprintf(w, "%s%s%s", red, text, reset)
 		},

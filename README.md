@@ -1,18 +1,29 @@
 # pagantic
 
-Generic agent framework for experimenting with agent architectures and LLM interactions.
-Uses [kronk](https://github.com/ardanlabs/kronk) for LLM engine access and model infrastructure management.
-Not intended for production use - learning tool and prototyping base.
+LLM harness system with deterministic control architecture around probabilistic inference.
+Uses [kronk](https://github.com/ardanlabs/kronk) for LLM engine access.
 
-## Packages
+## Architecture
 
-- **agent** - Multi-agent framework with tool loop, structured output, and tool registry
-- **llm** - Streaming response parsing and LLM interaction utilities
-- **tui** - Terminal UI primitives, REPL, and agent-harness for CLI apps
-- **kronk** - Kronk SDK lifecycle wrapper (install, load, init)
+11-layer system with explicit architectural boundaries:
+
+- **core** - Shared domain types (Message, ToolCall, Schema, TokenUsage)
+- **inference** - Layer 1: Execution substrate, Engine interface, kronk adapter
+- **orchestrate** - Layer 2: Control loop, AgentLoop, SpecializedLoop
+- **context** - Layer 3: Knowledge retrieval, ContextBuilder (stub)
+- **tool** - Layer 4: Tool registry and execution
+- **constraint** - Layer 5: Output enforcement, JSON validation and repair
+- **rerank** - Layer 6: Candidate evaluation and reranking (stub)
+- **validate** - Layer 7: Guardrails, rule validation, retry policy
+- **prompt** - Layer 8: Prompt construction, templates, instruction sets
+- **memory** - Layer 9: State management, conversation buffer
+- **observe** - Layer 10: Tracing, metrics, event logging
+- **api** - Layer 11: Interface contracts, request/response types
+- **kronk** - Kronk SDK lifecycle wrapper
+- **tui** - Terminal UI, REPL, streaming renderer
 
 ## Examples
 
 - **examples/simple-chat** - Minimal interactive chat REPL
 - **examples/tool-use** - Chat with a custom Go tool (dice roller)
-- **examples/structured-output** - SpecializedAgent with JSON schema output
+- **examples/structured-output** - SpecializedLoop with JSON schema output

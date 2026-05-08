@@ -8,8 +8,10 @@ import (
 	"io"
 	"time"
 
-	"github.com/miroslav-matejovsky/pagantic/agent"
-	"github.com/miroslav-matejovsky/pagantic/llm"
+	"github.com/miroslav-matejovsky/pagantic/core"
+	"github.com/miroslav-matejovsky/pagantic/inference"
+	"github.com/miroslav-matejovsky/pagantic/orchestrate"
+	"github.com/miroslav-matejovsky/pagantic/tool"
 )
 
 // AgentConfig controls AgentREPL creation.
@@ -18,23 +20,23 @@ type AgentConfig struct {
 	Title string
 	// Banner is passed to the underlying REPL as a startup message.
 	Banner string
-	// SystemPrompt defines the built-in chat agent's role.
+	// SystemPrompt defines the built-in chat loop's role.
 	SystemPrompt string
-	// EngineLoader is called once on first use to load the LLM engine.
+	// EngineLoader is called once on first use to load the inference engine.
 	// It returns the engine, a cleanup func (may be nil), and an error.
 	// Required.
-	EngineLoader func(context.Context) (llm.Chat, func(), error)
-	// Registry provides tools for the chat agent and tool-status listing.
+	EngineLoader func(context.Context) (inference.Engine, func(), error)
+	// Registry provides tools for the chat loop and tool-status listing.
 	// Required.
-	Registry *agent.Registry
+	Registry *tool.Registry
 	// LocalDir is the working directory for file I/O (cloned repos, etc.).
 	LocalDir string
 }
 
 // AgentREPL is a generic agent-harness REPL. It provides:
 //   - a tools command that lists tool availability
-//   - a chat command backed by a streaming LLM chat loop
-//   - lazy LLM engine loading via EngineLoader
+//   - a chat command backed by a streaming orchestration loop
+//   - lazy inference engine loading via EngineLoader
 //   - an extensible command set via AddCommand
 //
 // Application-specific commands are registered from outside via AddCommand,
@@ -44,7 +46,7 @@ type AgentConfig struct {
 // default to stdin/stdout/stderr and can be replaced for testing.
 type AgentREPL struct {
 	cfg          AgentConfig
-	engine       llm.Chat
+	engine       inference.Engine
 	engineLoaded bool
 	cleanup      func()
 	repl         *REPL
@@ -83,7 +85,7 @@ func NewAgentREPL(cfg AgentConfig) *AgentREPL {
 
 	t.repl.AddCommand(Command{
 		Name:        "chat",
-		Description: "Interactive LLM chat",
+		Description: "Interactive inference chat",
 		Run: func(ctx context.Context, _ []string) error {
 			return t.runChat(ctx)
 		},
@@ -97,9 +99,9 @@ func (t *AgentREPL) AddCommand(cmd Command) {
 	t.repl.AddCommand(cmd)
 }
 
-// Engine returns the lazily-loaded LLM engine, loading it on first call.
+// Engine returns the lazily-loaded inference engine, loading it on first call.
 // Use this in custom commands registered via AddCommand.
-func (t *AgentREPL) Engine(ctx context.Context) (llm.Chat, error) {
+func (t *AgentREPL) Engine(ctx context.Context) (inference.Engine, error) {
 	if err := t.ensureEngine(ctx); err != nil {
 		return nil, err
 	}
@@ -122,13 +124,13 @@ func (t *AgentREPL) Run(ctx context.Context) {
 	t.shutdown()
 }
 
-// ensureEngine loads the LLM engine once via EngineLoader.
+// ensureEngine loads the inference engine once via EngineLoader.
 // A failed load does not set engineLoaded, allowing retry on the next call.
 func (t *AgentREPL) ensureEngine(ctx context.Context) error {
 	if t.engineLoaded {
 		return nil
 	}
-	FWarn(t.repl.ErrOut, "Loading LLM engine (first use)...")
+	FWarn(t.repl.ErrOut, "Loading inference engine (first use)...")
 	eng, cleanup, err := t.cfg.EngineLoader(ctx)
 	if err != nil {
 		return fmt.Errorf("engine load: %w", err)
@@ -167,11 +169,11 @@ func (t *AgentREPL) runChat(ctx context.Context) error {
 	}
 
 	_, _ = fmt.Fprintln(t.repl.Out, "\n"+Cyan("=== Chat Mode ==="))
-	_, _ = fmt.Fprintln(t.repl.Out, "Type messages to chat with LLM. Tools are available.")
+	_, _ = fmt.Fprintln(t.repl.Out, "Type messages to chat with model. Tools are available.")
 	_, _ = fmt.Fprintln(t.repl.Out, "Type 'exit' or 'quit' to return to main menu.")
 	_, _ = fmt.Fprintln(t.repl.Out)
 
-	chatAgent := agent.New(agent.Config{
+	chatAgent := orchestrate.NewAgentLoop(orchestrate.LoopConfig{
 		SystemPrompt: t.cfg.SystemPrompt,
 		Engine:       t.engine,
 		Tools:        t.cfg.Registry,
@@ -211,8 +213,8 @@ func (t *AgentREPL) runChat(ctx context.Context) error {
 	return nil
 }
 
-// usageStats converts llm.TokenUsage to UsageStats for display.
-func usageStats(u llm.TokenUsage) UsageStats {
+// usageStats converts core.TokenUsage to UsageStats for display.
+func usageStats(u core.TokenUsage) UsageStats {
 	return UsageStats{
 		PromptTokens:    u.PromptTokens,
 		ReasoningTokens: u.ReasoningTokens,

@@ -8,10 +8,10 @@ import (
 	"os/signal"
 	"strings"
 
-	"github.com/ardanlabs/kronk/sdk/kronk/model"
-	"github.com/miroslav-matejovsky/pagantic/agent"
+	"github.com/miroslav-matejovsky/pagantic/core"
+	"github.com/miroslav-matejovsky/pagantic/inference"
 	"github.com/miroslav-matejovsky/pagantic/kronk"
-	"github.com/miroslav-matejovsky/pagantic/llm"
+	"github.com/miroslav-matejovsky/pagantic/tool"
 	"github.com/miroslav-matejovsky/pagantic/tui"
 )
 
@@ -21,15 +21,19 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 
-	registry := agent.NewRegistry(&diceTool{})
+	registry := tool.NewRegistry(&diceTool{})
 
 	repl := tui.NewAgentREPL(tui.AgentConfig{
 		Title:  "tool-use",
 		Banner: "Chat with an LLM that can roll dice. Try: chat, then ask it to roll 2d6.",
 		SystemPrompt: `You are a dice assistant. When the user asks to roll dice or generate random results,
 call the roll_dice tool. Do not invent dice results yourself.`,
-		EngineLoader: func(ctx context.Context) (llm.Chat, func(), error) {
-			return kronk.Load(ctx, kronk.Config{ModelSource: llmModel})
+		EngineLoader: func(ctx context.Context) (inference.Engine, func(), error) {
+			krn, cleanup, err := kronk.Load(ctx, kronk.Config{ModelSource: llmModel})
+			if err != nil {
+				return nil, nil, err
+			}
+			return inference.NewKronkAdapter(krn, nil), cleanup, nil
 		},
 		Registry: registry,
 	})
@@ -53,8 +57,8 @@ call the roll_dice tool. Do not invent dice results yourself.`,
 			if err != nil {
 				return err
 			}
-			cfg := eng.ModelConfig()
-			tui.Infof("Context window: %d", cfg.ContextWindow())
+			info := eng.ModelInfo()
+			tui.Infof("Context window: %d", info.ContextWindow)
 			return nil
 		},
 	})
@@ -63,36 +67,34 @@ call the roll_dice tool. Do not invent dice results yourself.`,
 	fmt.Println("Done.")
 }
 
-// diceTool rolls random dice. Implements agent.Tool.
+// diceTool rolls random dice. Implements tool.Tool.
 type diceTool struct{}
 
-func (d *diceTool) Info() agent.ToolInfo {
-	return agent.ToolInfo{
+func (d *diceTool) Info() tool.ToolInfo {
+	return tool.ToolInfo{
 		Name:        "roll_dice",
-		Type:        agent.TypeGo,
+		Type:        tool.TypeGo,
 		Description: "Roll dice with configurable sides and count",
 	}
 }
 
-func (d *diceTool) Definition() model.D {
-	return model.D{
-		"type": "function",
-		"function": model.D{
-			"name":        "roll_dice",
-			"description": "Roll one or more dice and return the results",
-			"parameters": model.D{
-				"type": "object",
-				"properties": model.D{
-					"sides": model.D{
-						"type":        "integer",
-						"description": "Number of sides per die (default 6)",
-					},
-					"count": model.D{
-						"type":        "integer",
-						"description": "Number of dice to roll (default 1)",
-					},
+func (d *diceTool) Definition() core.ToolDefinition {
+	return core.ToolDefinition{
+		Name:        "roll_dice",
+		Description: "Roll one or more dice and return the results",
+		Parameters: core.Schema{
+			Type: "object",
+			Properties: map[string]core.Schema{
+				"sides": {
+					Type:        "integer",
+					Description: "Number of sides per die (default 6)",
+				},
+				"count": {
+					Type:        "integer",
+					Description: "Number of dice to roll (default 1)",
 				},
 			},
+			Required: []string{"sides"},
 		},
 	}
 }

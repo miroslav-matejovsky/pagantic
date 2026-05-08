@@ -7,27 +7,37 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/miroslav-matejovsky/pagantic/agent"
-	"github.com/miroslav-matejovsky/pagantic/llm"
+	"github.com/miroslav-matejovsky/pagantic/inference"
+	"github.com/miroslav-matejovsky/pagantic/tool"
 )
 
-// stubRegistry is a minimal *agent.Registry substitute for testing.
-// We build a real registry with no tools to satisfy the type requirement.
-var stubRegistry = agent.NewRegistry()
+type fakeEngine struct{}
 
-func stubLoader(engine llm.Chat) func(context.Context) (llm.Chat, func(), error) {
-	return func(_ context.Context) (llm.Chat, func(), error) {
+func (*fakeEngine) Infer(context.Context, inference.Request) (*inference.Result, error) {
+	return &inference.Result{}, nil
+}
+
+func (*fakeEngine) ModelInfo() inference.ModelInfo {
+	return inference.ModelInfo{Name: "fake"}
+}
+
+// stubRegistry is a minimal *tool.Registry substitute for testing.
+// We build a real registry with no tools to satisfy the type requirement.
+var stubRegistry = tool.NewRegistry()
+
+func stubLoader(engine inference.Engine) func(context.Context) (inference.Engine, func(), error) {
+	return func(_ context.Context) (inference.Engine, func(), error) {
 		return engine, nil, nil
 	}
 }
 
-func errLoader(err error) func(context.Context) (llm.Chat, func(), error) {
-	return func(_ context.Context) (llm.Chat, func(), error) {
+func errLoader(err error) func(context.Context) (inference.Engine, func(), error) {
+	return func(_ context.Context) (inference.Engine, func(), error) {
 		return nil, nil, err
 	}
 }
 
-func newTestREPL(loader func(context.Context) (llm.Chat, func(), error)) (*AgentREPL, *bytes.Buffer, *bytes.Buffer) {
+func newTestREPL(loader func(context.Context) (inference.Engine, func(), error)) (*AgentREPL, *bytes.Buffer, *bytes.Buffer) {
 	out := &bytes.Buffer{}
 	errOut := &bytes.Buffer{}
 	t := NewAgentREPL(AgentConfig{
@@ -72,18 +82,18 @@ func TestAgentREPL_CustomLocalDir(t *testing.T) {
 	ar := NewAgentREPL(AgentConfig{
 		Title:        "Test",
 		SystemPrompt: "x",
-		EngineLoader: stubLoader(nil),
+		EngineLoader: stubLoader(&fakeEngine{}),
 		Registry:     stubRegistry,
-		LocalDir:     "/tmp/mydir",
+		LocalDir:     "C:\\work\\mydir",
 	})
-	if ar.LocalDir() != "/tmp/mydir" {
-		t.Errorf("LocalDir() = %q, want /tmp/mydir", ar.LocalDir())
+	if ar.LocalDir() != "C:\\work\\mydir" {
+		t.Errorf("LocalDir() = %q, want C:\\work\\mydir", ar.LocalDir())
 	}
 }
 
 func TestAgentREPL_EngineCalledOnce(t *testing.T) {
 	calls := 0
-	loader := func(_ context.Context) (llm.Chat, func(), error) {
+	loader := func(_ context.Context) (inference.Engine, func(), error) {
 		calls++
 		return nil, nil, nil
 	}
@@ -111,7 +121,7 @@ func TestAgentREPL_EngineErrorPropagation(t *testing.T) {
 func TestAgentREPL_EngineErrorNotCached(t *testing.T) {
 	// A failed load should allow retry on next call.
 	calls := 0
-	loader := func(_ context.Context) (llm.Chat, func(), error) {
+	loader := func(_ context.Context) (inference.Engine, func(), error) {
 		calls++
 		if calls == 1 {
 			return nil, nil, errors.New("transient error")
@@ -185,7 +195,7 @@ func TestAgentREPL_LoadingWarningToErrOut(t *testing.T) {
 	_, _ = ar.Engine(context.Background())
 
 	got := SanitizeOutput(errOut.String())
-	if !strings.Contains(got, "Loading LLM engine") {
+	if !strings.Contains(got, "Loading inference engine") {
 		t.Errorf("expected loading warning in errOut, got: %q", got)
 	}
 }
