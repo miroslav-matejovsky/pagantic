@@ -13,7 +13,8 @@ import (
 	"github.com/miroslav-matejovsky/pagantic/tui"
 )
 
-const llmModel = "unsloth/gemma-4-E4B-it"
+// const llmModel = "unsloth/gemma-4-E4B-it"
+const llmModel = "unsloth/Qwen3-0.6B-Q8_0"
 
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
