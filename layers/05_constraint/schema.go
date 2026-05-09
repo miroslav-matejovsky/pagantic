@@ -1,9 +1,11 @@
 package constraint
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"math"
+	"strings"
 
 	core "github.com/miroslav-matejovsky/pagantic/layers/00_core"
 )
@@ -153,4 +155,71 @@ func matchesEnum(value any, allowed []string) bool {
 		}
 	}
 	return false
+}
+
+// NormalizeEnumValues walks parsed JSON and rewrites any string enum field to
+// the canonical case defined in schema using case-insensitive matching.
+// Numbers are preserved exactly. Returns the original string on any error.
+// If a value matches multiple enum entries case-insensitively, it is left unchanged.
+func NormalizeEnumValues(jsonStr string, schema core.Schema) string {
+	dec := json.NewDecoder(bytes.NewReader([]byte(jsonStr)))
+	dec.UseNumber()
+
+	var obj any
+	if err := dec.Decode(&obj); err != nil {
+		return jsonStr
+	}
+
+	obj = normalizeValue(obj, schema)
+
+	out, err := json.Marshal(obj)
+	if err != nil {
+		return jsonStr
+	}
+	return string(out)
+}
+
+// normalizeValue recursively normalizes enum string values in parsed JSON.
+func normalizeValue(value any, schema core.Schema) any {
+	switch v := value.(type) {
+	case map[string]any:
+		for name, propSchema := range schema.Properties {
+			if val, ok := v[name]; ok {
+				v[name] = normalizeValue(val, propSchema)
+			}
+		}
+		return v
+	case []any:
+		if schema.Items != nil {
+			for i, elem := range v {
+				v[i] = normalizeValue(elem, *schema.Items)
+			}
+		}
+		return v
+	case string:
+		if len(schema.Enum) > 0 {
+			if canonical, ok := canonicalEnum(v, schema.Enum); ok {
+				return canonical
+			}
+		}
+		return v
+	}
+	return value
+}
+
+// canonicalEnum finds the unique case-insensitive match for s in allowed.
+// Returns ("", false) if zero or multiple matches exist.
+func canonicalEnum(s string, allowed []string) (string, bool) {
+	var match string
+	var count int
+	for _, item := range allowed {
+		if strings.EqualFold(s, item) {
+			match = item
+			count++
+		}
+	}
+	if count == 1 {
+		return match, true
+	}
+	return "", false
 }
