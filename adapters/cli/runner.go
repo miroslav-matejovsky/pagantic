@@ -12,6 +12,10 @@ import (
 	tool "github.com/miroslav-matejovsky/pagantic/layers/04_tool"
 )
 
+// DefaultTimeout is applied when RunConfig.Timeout is zero.
+// The kronk inference engine requires a context with a deadline.
+const DefaultTimeout = 120 * time.Second
+
 // RunConfig configures a single-shot CLI execution.
 type RunConfig struct {
 	// Engine is the inference engine to use. Required.
@@ -22,7 +26,7 @@ type RunConfig struct {
 	Registry *tool.Registry
 	// Stream receives streaming tokens during inference. May be nil.
 	Stream *inference.StreamHandler
-	// Timeout limits total execution time. Zero means no timeout.
+	// Timeout limits total execution time. Zero uses DefaultTimeout (120s).
 	Timeout time.Duration
 	// Out is the output writer. Defaults to os.Stdout if nil.
 	Out io.Writer
@@ -43,16 +47,19 @@ func NewRunner(cfg RunConfig) *Runner {
 
 // Run executes a single inference call with the given prompt and writes
 // the response content to the configured output writer.
+// Always applies a timeout: uses cfg.Timeout if set, otherwise DefaultTimeout.
 func (r *Runner) Run(ctx context.Context, prompt string) error {
 	if strings.TrimSpace(prompt) == "" {
 		return fmt.Errorf("cli: empty prompt")
 	}
 
-	if r.cfg.Timeout > 0 {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, r.cfg.Timeout)
-		defer cancel()
+	timeout := r.cfg.Timeout
+	if timeout <= 0 {
+		timeout = DefaultTimeout
 	}
+	var cancel context.CancelFunc
+	ctx, cancel = context.WithTimeout(ctx, timeout)
+	defer cancel()
 
 	agent := orchestrate.NewAgentLoop(orchestrate.LoopConfig{
 		SystemPrompt: r.cfg.SystemPrompt,

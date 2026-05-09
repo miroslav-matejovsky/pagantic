@@ -30,7 +30,9 @@
 // Runner is the main entry point. Configure with RunConfig (engine, system
 // prompt, optional tools, stream handler, timeout). Call Run with a prompt
 // string to execute a single inference request and write the result to the
-// configured output writer.
+// configured output writer. Run always applies a deadline to the context:
+// RunConfig.Timeout if set, otherwise DefaultTimeout (120s). This is required
+// because the inference engine mandates a context with a deadline.
 //
 // # Input
 //

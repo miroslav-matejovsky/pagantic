@@ -5,6 +5,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	inference "github.com/miroslav-matejovsky/pagantic/layers/01_inference"
 
@@ -13,9 +14,11 @@ import (
 
 type stubEngine struct {
 	response string
+	captCtx  context.Context
 }
 
-func (s *stubEngine) Infer(_ context.Context, _ inference.Request) (*inference.Result, error) {
+func (s *stubEngine) Infer(ctx context.Context, _ inference.Request) (*inference.Result, error) {
+	s.captCtx = ctx
 	return &inference.Result{Content: s.response}, nil
 }
 
@@ -68,6 +71,48 @@ func TestRunner_Run_NoOutputWhenStreaming(t *testing.T) {
 	err := r.Run(context.Background(), "say hello")
 	require.NoError(t, err)
 	require.Empty(t, buf.String(), "should not write to Out when streaming")
+}
+
+func TestRunner_Run_AlwaysHasDeadline(t *testing.T) {
+	// Engine requires a context with deadline - verify Run always sets one.
+	eng := &stubEngine{response: "ok"}
+	r := NewRunner(RunConfig{Engine: eng})
+
+	err := r.Run(context.Background(), "hello")
+	require.NoError(t, err)
+
+	_, hasDeadline := eng.captCtx.Deadline()
+	require.True(t, hasDeadline, "Run must always set a context deadline")
+}
+
+func TestRunner_Run_DefaultTimeoutApplied(t *testing.T) {
+	eng := &stubEngine{response: "ok"}
+	r := NewRunner(RunConfig{Engine: eng})
+
+	before := time.Now().Add(DefaultTimeout)
+	err := r.Run(context.Background(), "hello")
+	require.NoError(t, err)
+
+	deadline, ok := eng.captCtx.Deadline()
+	require.True(t, ok)
+	// Deadline should be approximately DefaultTimeout from before the call.
+	require.True(t, deadline.Before(before.Add(2*time.Second)),
+		"deadline should be close to DefaultTimeout")
+}
+
+func TestRunner_Run_CustomTimeoutOverridesDefault(t *testing.T) {
+	eng := &stubEngine{response: "ok"}
+	custom := 5 * time.Second
+	r := NewRunner(RunConfig{Engine: eng, Timeout: custom})
+
+	before := time.Now().Add(custom)
+	err := r.Run(context.Background(), "hello")
+	require.NoError(t, err)
+
+	deadline, ok := eng.captCtx.Deadline()
+	require.True(t, ok)
+	require.True(t, deadline.Before(before.Add(2*time.Second)),
+		"deadline should reflect custom timeout, not DefaultTimeout")
 }
 
 func TestReadPrompt_FromArgs(t *testing.T) {
