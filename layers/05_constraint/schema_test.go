@@ -133,3 +133,138 @@ func TestSchemaValidator_EmptySchemaPassesAnything(t *testing.T) {
 	require.True(t, result.Valid)
 	require.Empty(t, result.Errors)
 }
+
+func TestNormalizeEnumValues_NormalizesObjectProperty(t *testing.T) {
+	schema := core.Schema{
+		Properties: map[string]core.Schema{
+			"sentiment": {Type: "string", Enum: []string{"positive", "neutral", "negative"}},
+		},
+	}
+
+	out := NormalizeEnumValues(`{"sentiment":"Positive","confidence":0.98}`, schema)
+
+	require.Equal(t, `{"confidence":0.98,"sentiment":"positive"}`, out)
+}
+
+func TestNormalizeEnumValues_PreservesExactMatch(t *testing.T) {
+	schema := core.Schema{
+		Properties: map[string]core.Schema{
+			"status": {Type: "string", Enum: []string{"low", "high"}},
+		},
+	}
+
+	out := NormalizeEnumValues(`{"status":"high"}`, schema)
+
+	require.Equal(t, `{"status":"high"}`, out)
+}
+
+func TestNormalizeEnumValues_TopLevelStringEnum(t *testing.T) {
+	schema := core.Schema{Type: "string", Enum: []string{"positive", "neutral", "negative"}}
+
+	out := NormalizeEnumValues(`"Negative"`, schema)
+
+	require.Equal(t, `"negative"`, out)
+}
+
+func TestNormalizeEnumValues_PreservesNumbers(t *testing.T) {
+	schema := core.Schema{
+		Properties: map[string]core.Schema{
+			"sentiment": {Type: "string", Enum: []string{"positive", "neutral", "negative"}},
+			"id":        {Type: "number"},
+		},
+	}
+
+	out := NormalizeEnumValues(`{"sentiment":"NEUTRAL","id":9007199254740993}`, schema)
+
+	require.Equal(t, `{"id":9007199254740993,"sentiment":"neutral"}`, out)
+}
+
+func TestNormalizeEnumValues_AmbiguousEnumUnchanged(t *testing.T) {
+	schema := core.Schema{
+		Properties: map[string]core.Schema{
+			"mode": {Type: "string", Enum: []string{"US", "us"}},
+		},
+	}
+
+	out := NormalizeEnumValues(`{"mode":"US"}`, schema)
+
+	require.Equal(t, `{"mode":"US"}`, out)
+}
+
+func TestNormalizeEnumValues_NoMatchUnchanged(t *testing.T) {
+	schema := core.Schema{
+		Properties: map[string]core.Schema{
+			"status": {Type: "string", Enum: []string{"low", "high"}},
+		},
+	}
+
+	out := NormalizeEnumValues(`{"status":"medium"}`, schema)
+
+	require.Equal(t, `{"status":"medium"}`, out)
+}
+
+func TestNormalizeEnumValues_InvalidJSONReturnsOriginal(t *testing.T) {
+	schema := core.Schema{
+		Properties: map[string]core.Schema{
+			"x": {Type: "string", Enum: []string{"a"}},
+		},
+	}
+
+	out := NormalizeEnumValues(`not json`, schema)
+
+	require.Equal(t, `not json`, out)
+}
+
+func TestNormalizeEnumValues_ArrayItems(t *testing.T) {
+	schema := core.Schema{
+		Type: "array",
+		Items: &core.Schema{
+			Type: "string",
+			Enum: []string{"red", "green", "blue"},
+		},
+	}
+
+	out := NormalizeEnumValues(`["Red","GREEN","blue"]`, schema)
+
+	require.Equal(t, `["red","green","blue"]`, out)
+}
+
+func TestNormalizeEnumValues_TrailingGarbageReturnsOriginal(t *testing.T) {
+	schema := core.Schema{
+		Properties: map[string]core.Schema{
+			"status": {Type: "string", Enum: []string{"low", "high"}},
+		},
+	}
+
+	input := `{"status":"high"} garbage`
+	out := NormalizeEnumValues(input, schema)
+
+	require.Equal(t, input, out, "trailing non-whitespace should return original string")
+}
+
+func TestNormalizeEnumValues_TrailingWhitespaceIsOK(t *testing.T) {
+	schema := core.Schema{
+		Properties: map[string]core.Schema{
+			"status": {Type: "string", Enum: []string{"low", "high"}},
+		},
+	}
+
+	out := NormalizeEnumValues(`{"status":"HIGH"}  `, schema)
+
+	require.Equal(t, `{"status":"high"}`, out)
+}
+
+func TestSchemaValidator_NormalizeThenValidate(t *testing.T) {
+	schema := core.Schema{
+		Properties: map[string]core.Schema{
+			"sentiment": {Type: "string", Enum: []string{"positive", "neutral", "negative"}},
+		},
+		Required: []string{"sentiment"},
+	}
+
+	normalized := NormalizeEnumValues(`{"sentiment":"Positive"}`, schema)
+	result := NewSchemaValidator(schema).Validate(normalized)
+
+	require.True(t, result.Valid)
+	require.Empty(t, result.Errors)
+}

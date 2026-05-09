@@ -1,5 +1,4 @@
 - add support for GBNF grammar in orchestrate/specialized - constraint/doc.go has TODO for GrammarDefinition and DecoderConstraint
 - add support for redundant inference with same input and multiple candidates and validating Triple modular redundancy or N-Version programming style (this is bigger, separate pr)
 - implement context layer - stubs exist (builder.go, memory.go, retriever.go) - needs design for retrieval strategy and integration with orchestrate loop
-- orchestrate (layer 2) depends on constraint (layer 5) - intentional: ChatStructured uses RepairJSON and SchemaValidator for structured output enforcement
 - rerank layer has implementation (policy.go, scorer.go, simple.go) but not wired into orchestrate plan execution yet - wire when ExecutionPlan step routing is implemented

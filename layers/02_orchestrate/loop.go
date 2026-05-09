@@ -127,6 +127,7 @@ func (al *AgentLoop) ChatStructured(ctx context.Context, userMessage string, sch
 	}
 
 	if json.Valid([]byte(result.Content)) {
+		result.Content = constraint.NormalizeEnumValues(result.Content, schema)
 		return al.validateSchema(result, schema)
 	}
 
@@ -135,7 +136,7 @@ func (al *AgentLoop) ChatStructured(ctx context.Context, userMessage string, sch
 		return nil, fmt.Errorf("agent loop structured output: invalid JSON after repair: %s", repaired)
 	}
 
-	result.Content = repaired
+	result.Content = constraint.NormalizeEnumValues(repaired, schema)
 	return al.validateSchema(result, schema)
 }
 

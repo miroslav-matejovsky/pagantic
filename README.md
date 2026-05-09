@@ -8,25 +8,74 @@ Inspired by [Harness engineering for coding agent users](https://martinfowler.co
 
 ## Architecture
 
-10-layer system with explicit architectural boundaries:
+10-layer system with explicit architectural boundaries, adapter-based I/O, and a dedicated engine wrapper.
 
-- **core** - Shared domain types (Message, ToolCall, Schema, TokenUsage)
-- **inference** - Layer 1: Execution substrate, Engine interface
-- **orchestrate** - Layer 2: Control loop, AgentLoop, SpecializedLoop
-- **context** - Layer 3: Knowledge retrieval, ContextBuilder (stub)
-- **tool** - Layer 4: Tool registry and execution
-- **constraint** - Layer 5: Output enforcement, JSON validation and repair
-- **rerank** - Layer 6: Candidate evaluation and reranking (stub)
-- **validate** - Layer 7: Guardrails, rule validation, retry policy
-- **prompt** - Layer 8: Prompt construction, templates, instruction sets
-- **memory** - Layer 9: State management, conversation buffer
-- **observe** - Layer 10: Tracing, metrics, event logging
-- **api** - Interface contracts, request/response types
-- **kronk** - Kronk SDK lifecycle wrapper and inference adapter
-- **tui** - Terminal UI, REPL, streaming renderer
+```
+                    +---------------------------+
+                    |         Adapters           |
+                    |  cli  |  tui  |  api       |
+                    +-------+-------+------------+
+                            |
+                    +-------v-------+
+                    |   orchestrate |  Control loop, agent loops
+                    +-------+-------+
+                            |
+        +-------+-------+---+---+-------+-------+
+        |       |       |       |       |       |
+     context  tool  constraint rerank validate prompt
+        |       |       |       |       |       |
+        +-------+-------+---+---+-------+-------+
+                            |
+                    +-------v-------+
+                    |   inference   |  Engine interface
+                    +-------+-------+
+                            |
+                    +-------v-------+
+                    |     kronk     |  SDK adapter
+                    +---------------+
+                            |
+                    +-------v-------+
+                    |     core      |  Shared domain types
+                    +---------------+
+```
+
+### Layers
+
+Each layer lives under `layers/` with a numeric prefix enforcing dependency direction.
+
+| Layer | Package | Purpose |
+|-------|---------|---------|
+| 0 | **core** | Shared domain types - Message, ToolCall, Schema, TokenUsage. No dependencies. |
+| 1 | **inference** | Execution substrate. Defines Engine interface for model inference. |
+| 2 | **orchestrate** | Control loop. AgentLoop for multi-turn chat with tool resolution. SpecializedLoop for schema-constrained single-shot calls. |
+| 3 | **context** | Knowledge retrieval and context building (stub). |
+| 4 | **tool** | Tool registry, execution, and availability checking. |
+| 5 | **constraint** | Output enforcement. JSON validation, repair, schema validation, enum normalization. |
+| 6 | **rerank** | Candidate evaluation and reranking (stub). |
+| 7 | **validate** | Guardrails, rule validation, retry policy. |
+| 8 | **prompt** | Prompt construction. SystemPrompt builder with composable InstructionSets. |
+| 9 | **memory** | State management. ConversationBuffer for message history. |
+| 10 | **observe** | Tracing, metrics, event logging via EventLog interface. |
+
+### Adapters
+
+Adapters live under `adapters/` and serve as thin boundary layers between external interaction channels and the internal execution core. Each adapter is stateless, deterministic, and replaceable.
+
+| Adapter | Purpose |
+|---------|---------|
+| **cli** | Single-shot command-line execution. Reads prompt from args or stdin, runs inference, writes result to stdout, and exits. |
+| **tui** | Interactive terminal UI. REPL with command dispatch, agent harness with streaming chat, ANSI colored output, and tool status display. |
+| **api** | Service interface contracts. Request/Response types, validation, streaming interface, structured error model. |
+
+### Engine
+
+| Package | Purpose |
+|---------|---------|
+| **kronk** | Kronk SDK lifecycle wrapper. Handles library installation, model downloading, and inference adapter implementing Engine interface. |
 
 ## Examples
 
-- **examples/simple-chat** - Minimal interactive chat REPL
-- **examples/tool-use** - Chat with a custom Go tool (dice roller)
-- **examples/structured-output** - SpecializedLoop with JSON schema output
+- **examples/tui/simple-chat** - Minimal interactive chat REPL
+- **examples/tui/tool-use** - Chat with a custom Go tool (dice roller)
+- **examples/tui/structured-output** - SpecializedLoop with JSON schema output
+- **examples/cli/simple-query** - Single-shot CLI query

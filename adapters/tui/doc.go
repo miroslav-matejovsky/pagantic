@@ -1,6 +1,27 @@
 // Package tui provides generic terminal UI primitives and an agent-harness
 // REPL reusable across CLI agent applications.
 //
+// # ARCHITECTURAL ROLE
+//
+// This package is an Interface (Shell) adapter. It is a thin boundary between
+// external terminal interaction and the internal execution core. It must
+// remain stateless (except minimal interaction context), thin (no business
+// logic), deterministic, and replaceable without affecting core behavior.
+//
+// INTERACTION FLOW
+//
+//	External Terminal Input
+//	    -> tui Adapter (this package)
+//	    -> ExecutionService (orchestrate layer)
+//	    -> Response Rendering
+//	    -> Terminal Output
+//
+// # PROHIBITED RESPONSIBILITIES
+//
+// This package must NOT perform orchestration logic, call inference directly,
+// execute tools, enforce output schemas, implement validation, or construct
+// prompts beyond composing from the prompt layer.
+//
 // # Colors
 //
 // Bold, Dim, Green, Red, Yellow, Cyan, and Grey wrap strings in ANSI escape
