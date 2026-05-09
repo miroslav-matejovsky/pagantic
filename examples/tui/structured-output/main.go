@@ -1,3 +1,28 @@
+// TUI example: schema-constrained structured output.
+//
+// Demonstrates pagantic as a Probabilistic Agentic Control System:
+//
+//   - Layer 2 (orchestrate): SpecializedLoop runs a single-shot inference
+//     that produces JSON matching a schema. Unlike AgentLoop, SpecializedLoop
+//     is stateless - fresh loop per call - optimized for extract-and-structure
+//     patterns.
+//
+//   - Layer 5 (constraint): SchemaValidator, RepairJSON, and NormalizeEnumValues
+//     enforce structured output. The model's probabilistic text generation is
+//     constrained to valid JSON matching the schema. If the model produces
+//     broken JSON, RepairJSON attempts recovery before validation.
+//
+//   - Layer 0 (core): Schema defines the expected output shape with types,
+//     enums, and required fields. This is the contract between the harness
+//     and the model.
+//
+//   - Layer 1 (inference): Engine handles streaming. TerminalRenderer shows
+//     tokens as they arrive so the user sees progress before validation.
+//
+// Key pagantic concept: deterministic post-processing of probabilistic output.
+// The model generates freely, then the constraint layer forces the output into
+// a valid, typed structure. This is the "control" in Probabilistic Agentic
+// Control System.
 package main
 
 import (

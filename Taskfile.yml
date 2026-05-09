@@ -124,6 +124,16 @@ tasks:
     cmds:
       - go run examples/cli/simple-query/main.go {{.CLI_ARGS}}
 
+  run-context-query:
+    desc: Run the context-query CLI example with RAG (pass prompt as args)
+    cmds:
+      - go run examples/cli/context-query/main.go {{.CLI_ARGS}}
+
+  run-context-chat:
+    desc: Run the context-chat TUI example with per-turn context retrieval
+    cmds:
+      - go run examples/tui/context-chat/main.go
+
   # --- maintenance ---
 
   deps:

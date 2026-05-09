@@ -1,3 +1,22 @@
+// CLI example: single-shot query without context or tools.
+//
+// Demonstrates the simplest pagantic pattern - direct inference with
+// deterministic control:
+//
+//   - Layer 2 (orchestrate): AgentLoop wraps one inference call. Even this
+//     minimal case uses the full control loop - the loop just completes in
+//     one iteration since there are no tools to resolve.
+//
+//   - Layer 1 (inference): kronk engine handles raw model interaction. The
+//     Engine interface hides backend details (model loading, tokenization,
+//     streaming protocol).
+//
+//   - Adapter (cli): ReadPrompt reads from args or stdin. Runner delegates
+//     to orchestrate layer. No business logic in the adapter.
+//
+// Key pagantic concept: even the simplest query goes through the harness.
+// The control system wraps probabilistic inference with deterministic
+// scaffolding (timeouts, error handling, streaming) from the start.
 package main
 
 import (

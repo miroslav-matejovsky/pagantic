@@ -1,3 +1,28 @@
+// TUI example: multi-turn chat with a custom Go tool (dice roller).
+//
+// Demonstrates pagantic as a Probabilistic Agentic Control System:
+//
+//   - Layer 4 (tool): Tool interface defines metadata, schema, execution, and
+//     availability. diceTool implements it with deterministic dice rolling.
+//     Registry groups tools and dispatches execution by name.
+//
+//   - Layer 2 (orchestrate): AgentLoop drives the tool-call loop. When the
+//     model requests a tool call, the loop executes it deterministically and
+//     feeds the result back. This loop continues until the model produces a
+//     final text response (no more tool calls). MaxToolIterations prevents
+//     infinite loops.
+//
+//   - Layer 1 (inference): Engine streams tokens. The model decides WHEN to
+//     call tools (probabilistic), but the tool execution is fully
+//     deterministic. This separation is core to the harness design.
+//
+//   - Adapter (tui): AgentREPL with custom commands (info, engine) registered
+//     via AddCommand. Shows how adapters extend without touching core logic.
+//
+// Key pagantic concept: the model is probabilistic, tools are deterministic.
+// The harness mediates between them. The model proposes tool calls, the
+// harness executes them outside model context, and feeds results back.
+// All side effects live in tools, never in the model.
 package main
 
 import (

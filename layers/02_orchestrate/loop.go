@@ -17,6 +17,12 @@ import (
 const defaultMaxTokens = 2048
 const defaultMaxToolIterations = 20
 
+// ContextProvider retrieves context messages for a query.
+// context.ContextBuilder satisfies this interface via Go structural typing.
+type ContextProvider interface {
+	Build(ctx context.Context, query string) ([]core.Message, error)
+}
+
 // LoopConfig configures agent loop.
 type LoopConfig struct {
 	Engine            inference.Engine
@@ -27,6 +33,7 @@ type LoopConfig struct {
 	Stream            *inference.StreamHandler
 	OnToolResult      func(name, output string)
 	Observer          observe.EventLog
+	ContextProvider   ContextProvider // optional; retrieves context before inference
 }
 
 // AgentLoop is stateful multi-turn agent with tool loop.
@@ -61,6 +68,7 @@ func (al *AgentLoop) Chat(ctx context.Context, userMessage string) (*inference.R
 		return nil, fmt.Errorf("agent loop chat: nil engine")
 	}
 
+	al.retrieveContext(ctx, userMessage)
 	al.memory.Append(core.NewUserMessage(userMessage))
 
 	for iteration := 0; ; iteration++ {
@@ -204,6 +212,33 @@ func (al *AgentLoop) recordEvent(started time.Time, action string, data map[stri
 		Duration:  time.Since(started),
 		Error:     err,
 	})
+}
+
+// retrieveContext calls ContextProvider and appends results to memory.
+// On error, records observer event and continues without context.
+func (al *AgentLoop) retrieveContext(ctx context.Context, query string) {
+	if al.cfg.ContextProvider == nil {
+		return
+	}
+
+	started := time.Now()
+	msgs, err := al.cfg.ContextProvider.Build(ctx, query)
+	al.recordEvent(started, "context", map[string]any{"query": query, "chunks": len(msgs)}, err)
+	if err != nil {
+		return
+	}
+
+	for _, msg := range msgs {
+		al.memory.Append(msg)
+	}
+}
+
+// injectContext adds messages directly into conversation buffer.
+// Used by SpecializedLoop to pre-load context before Chat/ChatStructured.
+func (al *AgentLoop) injectContext(messages []core.Message) {
+	for _, msg := range messages {
+		al.memory.Append(msg)
+	}
 }
 
 func resolveMessages(requestMessages []core.Message, result *inference.Result) []core.Message {

@@ -1,3 +1,27 @@
+// TUI example: interactive multi-turn chat without tools or context.
+//
+// Demonstrates pagantic as a Probabilistic Agentic Control System:
+//
+//   - Layer 2 (orchestrate): AgentLoop manages multi-turn conversation
+//     state. Each user message enters the control loop, which runs inference
+//     and checks for tool calls. With no tools registered, the loop always
+//     completes in one iteration per turn.
+//
+//   - Layer 9 (memory): ConversationBuffer accumulates message history
+//     across turns. The orchestrate layer owns this state - the adapter
+//     never touches it directly.
+//
+//   - Layer 1 (inference): Engine loaded lazily via EngineLoader on first
+//     chat message. This keeps startup fast and avoids loading the model
+//     if the user never enters chat mode.
+//
+//   - Adapter (tui): AgentREPL provides command dispatch (help, tools, chat,
+//     quit). The chat command enters an inner loop that reads user input
+//     and delegates to AgentLoop. Streaming tokens rendered to terminal.
+//
+// Key pagantic concept: the adapter is a thin shell around the orchestrate
+// layer. All conversation logic, tool handling, and state management live
+// in the harness layers, not in the UI code.
 package main
 
 import (

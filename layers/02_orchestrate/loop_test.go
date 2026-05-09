@@ -291,3 +291,112 @@ func cloneTestResult(result inference.Result) inference.Result {
 
 var _ inference.Engine = (*fakeEngine)(nil)
 var _ tool.Tool = (*fakeTool)(nil)
+
+// fakeContextProvider returns fixed context messages.
+type fakeContextProvider struct {
+	messages []core.Message
+	err      error
+	queries  []string
+}
+
+func (f *fakeContextProvider) Build(_ context.Context, query string) ([]core.Message, error) {
+	f.queries = append(f.queries, query)
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.messages, nil
+}
+
+func TestAgentLoop_Chat_WithContext(t *testing.T) {
+	eng := &fakeEngine{
+		responses: []inference.Result{{Content: "answer with context"}},
+	}
+	provider := &fakeContextProvider{
+		messages: []core.Message{core.NewSystemMessage("Relevant context:\n\n[1] (doc): bounded knowledge")},
+	}
+	loop := NewAgentLoop(LoopConfig{
+		SystemPrompt:    "sys",
+		Engine:          eng,
+		ContextProvider: provider,
+	})
+
+	result, err := loop.Chat(context.Background(), "what is X?")
+	require.NoError(t, err)
+	require.Equal(t, "answer with context", result.Content)
+	require.Equal(t, []string{"what is X?"}, provider.queries)
+
+	// Context message appears between system prompt and user message.
+	msgs := eng.calls[0].Messages
+	require.Equal(t, core.RoleSystem, msgs[0].Role)
+	require.Equal(t, "sys", msgs[0].Content)
+	require.Equal(t, core.RoleSystem, msgs[1].Role)
+	require.Contains(t, msgs[1].Content, "bounded knowledge")
+	require.Equal(t, core.RoleUser, msgs[2].Role)
+	require.Equal(t, "what is X?", msgs[2].Content)
+}
+
+func TestAgentLoop_Chat_NilContextProvider(t *testing.T) {
+	eng := &fakeEngine{
+		responses: []inference.Result{{Content: "no context"}},
+	}
+	loop := NewAgentLoop(LoopConfig{
+		SystemPrompt: "sys",
+		Engine:       eng,
+	})
+
+	result, err := loop.Chat(context.Background(), "hi")
+	require.NoError(t, err)
+	require.Equal(t, "no context", result.Content)
+
+	// Only system + user messages, no context.
+	msgs := eng.calls[0].Messages
+	require.Len(t, msgs, 2)
+	require.Equal(t, core.RoleSystem, msgs[0].Role)
+	require.Equal(t, core.RoleUser, msgs[1].Role)
+}
+
+func TestAgentLoop_Chat_ContextErrorContinuesWithout(t *testing.T) {
+	eng := &fakeEngine{
+		responses: []inference.Result{{Content: "still works"}},
+	}
+	provider := &fakeContextProvider{
+		err: errors.New("retrieval failed"),
+	}
+	loop := NewAgentLoop(LoopConfig{
+		SystemPrompt:    "sys",
+		Engine:          eng,
+		ContextProvider: provider,
+	})
+
+	result, err := loop.Chat(context.Background(), "hi")
+	require.NoError(t, err)
+	require.Equal(t, "still works", result.Content)
+
+	// No context messages injected on error.
+	msgs := eng.calls[0].Messages
+	require.Len(t, msgs, 2)
+}
+
+func TestAgentLoop_Chat_ContextRetrievedEveryTurn(t *testing.T) {
+	eng := &fakeEngine{
+		responses: []inference.Result{
+			{Content: "first answer"},
+			{Content: "second answer"},
+		},
+	}
+	provider := &fakeContextProvider{
+		messages: []core.Message{core.NewSystemMessage("ctx")},
+	}
+	loop := NewAgentLoop(LoopConfig{
+		SystemPrompt:    "sys",
+		Engine:          eng,
+		ContextProvider: provider,
+	})
+
+	_, err := loop.Chat(context.Background(), "q1")
+	require.NoError(t, err)
+	_, err = loop.Chat(context.Background(), "q2")
+	require.NoError(t, err)
+
+	require.Equal(t, []string{"q1", "q2"}, provider.queries)
+}

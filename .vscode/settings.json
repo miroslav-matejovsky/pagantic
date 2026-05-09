@@ -72,6 +72,7 @@
     "golangci",
     "gopls",
     "gotestsum",
+    "Infof",
     "kronk",
     "LASTEXITCODE",
     "matejovsky",
@@ -86,6 +87,7 @@
     "tmpl",
     "toolcall",
     "unsloth",
-    "venv"
+    "venv",
+    "Warnf"
   ]
 }
