@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -58,6 +59,12 @@ func TestRunner_Run_WritesOutput(t *testing.T) {
 	err := r.Run(context.Background(), "say hello")
 	require.NoError(t, err)
 	require.Equal(t, "hello world\n", buf.String())
+}
+
+func TestRunner_Run_NilOutDefaultsToStdout(t *testing.T) {
+	// With nil Out, NewRunner should default to os.Stdout - no panic, no lost output.
+	r := NewRunner(RunConfig{Engine: &stubEngine{response: "ok"}})
+	require.Equal(t, os.Stdout, r.cfg.Out)
 }
 
 func TestRunner_Run_NoOutputWhenStreaming(t *testing.T) {

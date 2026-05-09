@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 	"time"
 
@@ -28,7 +29,7 @@ type RunConfig struct {
 	Stream *inference.StreamHandler
 	// Timeout limits total execution time. Zero uses DefaultTimeout (120s).
 	Timeout time.Duration
-	// Out is the output writer. Defaults to os.Stdout if nil.
+	// Out is the output writer. Defaults to os.Stdout when nil.
 	Out io.Writer
 }
 
@@ -38,9 +39,13 @@ type Runner struct {
 }
 
 // NewRunner creates a Runner from config. Panics if Engine is nil.
+// Out defaults to os.Stdout when nil.
 func NewRunner(cfg RunConfig) *Runner {
 	if cfg.Engine == nil {
 		panic("cli: RunConfig.Engine must not be nil")
+	}
+	if cfg.Out == nil {
+		cfg.Out = os.Stdout
 	}
 	return &Runner{cfg: cfg}
 }
@@ -73,7 +78,7 @@ func (r *Runner) Run(ctx context.Context, prompt string) error {
 		return fmt.Errorf("cli: %w", err)
 	}
 
-	if r.cfg.Out != nil && r.cfg.Stream == nil {
+	if r.cfg.Stream == nil {
 		_, err = fmt.Fprintln(r.cfg.Out, result.Content)
 		if err != nil {
 			return fmt.Errorf("cli: write output: %w", err)

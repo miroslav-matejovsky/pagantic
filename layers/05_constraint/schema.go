@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"math"
 	"strings"
 
@@ -161,12 +162,19 @@ func matchesEnum(value any, allowed []string) bool {
 // the canonical case defined in schema using case-insensitive matching.
 // Numbers are preserved exactly. Returns the original string on any error.
 // If a value matches multiple enum entries case-insensitively, it is left unchanged.
+// Returns the original string when trailing non-whitespace content follows the JSON value.
 func NormalizeEnumValues(jsonStr string, schema core.Schema) string {
 	dec := json.NewDecoder(bytes.NewReader([]byte(jsonStr)))
 	dec.UseNumber()
 
 	var obj any
 	if err := dec.Decode(&obj); err != nil {
+		return jsonStr
+	}
+
+	// Reject trailing non-whitespace: Decode succeeds even with garbage after the value.
+	var extra json.RawMessage
+	if err := dec.Decode(&extra); err != io.EOF {
 		return jsonStr
 	}
 

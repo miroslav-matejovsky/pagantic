@@ -229,6 +229,31 @@ func TestNormalizeEnumValues_ArrayItems(t *testing.T) {
 	require.Equal(t, `["red","green","blue"]`, out)
 }
 
+func TestNormalizeEnumValues_TrailingGarbageReturnsOriginal(t *testing.T) {
+	schema := core.Schema{
+		Properties: map[string]core.Schema{
+			"status": {Type: "string", Enum: []string{"low", "high"}},
+		},
+	}
+
+	input := `{"status":"high"} garbage`
+	out := NormalizeEnumValues(input, schema)
+
+	require.Equal(t, input, out, "trailing non-whitespace should return original string")
+}
+
+func TestNormalizeEnumValues_TrailingWhitespaceIsOK(t *testing.T) {
+	schema := core.Schema{
+		Properties: map[string]core.Schema{
+			"status": {Type: "string", Enum: []string{"low", "high"}},
+		},
+	}
+
+	out := NormalizeEnumValues(`{"status":"HIGH"}  `, schema)
+
+	require.Equal(t, `{"status":"high"}`, out)
+}
+
 func TestSchemaValidator_NormalizeThenValidate(t *testing.T) {
 	schema := core.Schema{
 		Properties: map[string]core.Schema{
