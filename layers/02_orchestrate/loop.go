@@ -17,6 +17,14 @@ import (
 const defaultMaxTokens = 2048
 const defaultMaxToolIterations = 20
 
+// ContextProvider retrieves context messages for a query.
+// The pagantic layers/03_context.ContextBuilder (typically imported with alias
+// pctx) satisfies this interface via Go structural typing - no explicit
+// interface declaration needed in that package.
+type ContextProvider interface {
+	Build(ctx context.Context, query string) ([]core.Message, error)
+}
+
 // LoopConfig configures agent loop.
 type LoopConfig struct {
 	Engine            inference.Engine
@@ -27,6 +35,7 @@ type LoopConfig struct {
 	Stream            *inference.StreamHandler
 	OnToolResult      func(name, output string)
 	Observer          observe.EventLog
+	ContextProvider   ContextProvider // optional; retrieves context for Chat turns (multi-turn path only)
 }
 
 // AgentLoop is stateful multi-turn agent with tool loop.
@@ -61,6 +70,10 @@ func (al *AgentLoop) Chat(ctx context.Context, userMessage string) (*inference.R
 		return nil, fmt.Errorf("agent loop chat: nil engine")
 	}
 
+	// Retrieve context ephemerally - injected into first iteration request only,
+	// never stored in the buffer. This prevents context from accumulating across
+	// turns when the same AgentLoop is used for multi-turn conversation.
+	ctxMsgs := al.fetchContext(ctx, userMessage)
 	al.memory.Append(core.NewUserMessage(userMessage))
 
 	for iteration := 0; ; iteration++ {
@@ -68,20 +81,33 @@ func (al *AgentLoop) Chat(ctx context.Context, userMessage string) (*inference.R
 			return nil, fmt.Errorf("agent loop chat: exceeded max tool iterations (%d)", al.cfg.MaxToolIterations)
 		}
 
+		var requestMsgs []core.Message
+		if iteration == 0 {
+			// First iteration: inject context ephemerally before user message.
+			// Subsequent iterations (tool loop) use memory directly.
+			requestMsgs = al.memoryWithEphemeralContext(ctxMsgs)
+		} else {
+			requestMsgs = al.memory.Messages()
+		}
+
 		req := inference.Request{
-			Messages:  al.memory.Messages(),
+			Messages:  requestMsgs,
 			MaxTokens: al.cfg.MaxTokens,
 		}
 		if al.cfg.Tools != nil {
 			req.Tools = al.cfg.Tools.Definitions()
 		}
 
+		// Snapshot memory before inference. Used by storeResult to rebuild
+		// history without ephemeral context from req.Messages.
+		memBase := al.memory.Messages()
+
 		result, err := al.infer(ctx, req)
 		if err != nil {
 			return nil, fmt.Errorf("agent loop chat: %w", err)
 		}
 
-		al.replaceMessages(resolveMessages(req.Messages, result))
+		al.storeResult(memBase, result)
 		if len(result.ToolCalls) == 0 {
 			return result, nil
 		}
@@ -204,6 +230,74 @@ func (al *AgentLoop) recordEvent(started time.Time, action string, data map[stri
 		Duration:  time.Since(started),
 		Error:     err,
 	})
+}
+
+// fetchContext retrieves context messages without storing them in the buffer.
+// Returns nil on error (graceful degradation) and records an observer event.
+func (al *AgentLoop) fetchContext(ctx context.Context, query string) []core.Message {
+	if al.cfg.ContextProvider == nil {
+		return nil
+	}
+
+	started := time.Now()
+	msgs, err := al.cfg.ContextProvider.Build(ctx, query)
+	al.recordEvent(started, "context", map[string]any{"query": query, "chunks": len(msgs)}, err)
+	if err != nil {
+		return nil
+	}
+
+	return msgs
+}
+
+// memoryWithEphemeralContext builds a request message list by inserting ctxMsgs
+// before the last message (user message) in the buffer. The buffer is not modified.
+func (al *AgentLoop) memoryWithEphemeralContext(ctxMsgs []core.Message) []core.Message {
+	memMsgs := al.memory.Messages()
+	if len(ctxMsgs) == 0 {
+		return memMsgs
+	}
+
+	n := len(memMsgs)
+	if n == 0 {
+		return cloneMessages(ctxMsgs)
+	}
+
+	result := make([]core.Message, 0, n+len(ctxMsgs))
+	result = append(result, memMsgs[:n-1]...)
+	result = append(result, ctxMsgs...)
+	result = append(result, memMsgs[n-1])
+	return result
+}
+
+// storeResult rebuilds memory from base messages plus the assistant response in
+// result. It ignores result.Messages (which may include ephemeral context from
+// the request) and uses only result.Content and result.ToolCalls.
+func (al *AgentLoop) storeResult(base []core.Message, result *inference.Result) {
+	msgs := cloneMessages(base)
+	if result == nil {
+		al.replaceMessages(msgs)
+		return
+	}
+
+	assistant := core.Message{
+		Role:      core.RoleAssistant,
+		Content:   result.Content,
+		ToolCalls: cloneToolCalls(result.ToolCalls),
+	}
+	if assistant.Content != "" || len(assistant.ToolCalls) > 0 {
+		msgs = append(msgs, assistant)
+	}
+	al.replaceMessages(msgs)
+}
+
+// injectContext adds messages directly into conversation buffer.
+// Used by SpecializedLoop to pre-load context into a fresh inner AgentLoop
+// before running Chat or ChatStructured. Safe because SpecializedLoop creates
+// a fresh inner loop per call, so there is no multi-turn accumulation.
+func (al *AgentLoop) injectContext(messages []core.Message) {
+	for _, msg := range messages {
+		al.memory.Append(msg)
+	}
 }
 
 func resolveMessages(requestMessages []core.Message, result *inference.Result) []core.Message {

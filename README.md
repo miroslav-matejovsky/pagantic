@@ -48,7 +48,7 @@ Each layer lives under `layers/` with a numeric prefix enforcing dependency dire
 | 0 | **core** | Shared domain types - Message, ToolCall, Schema, TokenUsage. No dependencies. |
 | 1 | **inference** | Execution substrate. Defines Engine interface for model inference. |
 | 2 | **orchestrate** | Control loop. AgentLoop for multi-turn chat with tool resolution. SpecializedLoop for schema-constrained single-shot calls. |
-| 3 | **context** | Knowledge retrieval and context building (stub). |
+| 3 | **context** | Knowledge retrieval and context building. Retriever interface, InMemoryRetriever, ContextBuilder. Integrated with orchestrate via ContextProvider. |
 | 4 | **tool** | Tool registry, execution, and availability checking. |
 | 5 | **constraint** | Output enforcement. JSON validation, repair, schema validation, enum normalization. |
 | 6 | **rerank** | Candidate evaluation and reranking (stub). |
@@ -78,4 +78,6 @@ Adapters live under `adapters/` and serve as thin boundary layers between extern
 - **examples/tui/simple-chat** - Minimal interactive chat REPL
 - **examples/tui/tool-use** - Chat with a custom Go tool (dice roller)
 - **examples/tui/structured-output** - SpecializedLoop with JSON schema output
+- **examples/tui/context-chat** - Interactive chat with per-turn context retrieval (RAG)
 - **examples/cli/simple-query** - Single-shot CLI query
+- **examples/cli/context-query** - Single-shot CLI query with context retrieval (RAG)

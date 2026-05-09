@@ -69,3 +69,60 @@ func TestSpecializedLoop_MaxTokens_Default(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 2048, eng.calls[0].MaxTokens)
 }
+
+func TestSpecializedLoop_Call_WithContext_NoTools(t *testing.T) {
+	eng := &fakeEngine{
+		responses: []inference.Result{{Content: `{"answer":"yes"}`}},
+	}
+	provider := &fakeContextProvider{
+		messages: []core.Message{core.NewSystemMessage("context info")},
+	}
+	loop := NewSpecializedLoop(SpecializedConfig{
+		SystemPrompt:    "sys",
+		Engine:          eng,
+		Schema:          core.Schema{Type: "object"},
+		ContextProvider: provider,
+	})
+
+	result, err := loop.Call(context.Background(), "analyze")
+	require.NoError(t, err)
+	require.Equal(t, `{"answer":"yes"}`, result.Content)
+	require.Equal(t, []string{"analyze"}, provider.queries)
+
+	// Context injected into messages before user prompt.
+	msgs := eng.calls[0].Messages
+	require.Equal(t, core.RoleSystem, msgs[0].Role)
+	require.Equal(t, "sys", msgs[0].Content)
+	require.Equal(t, core.RoleSystem, msgs[1].Role)
+	require.Equal(t, "context info", msgs[1].Content)
+}
+
+func TestSpecializedLoop_Call_WithContext_WithTools(t *testing.T) {
+	eng := &fakeEngine{
+		responses: []inference.Result{
+			{ToolCalls: []core.ToolCall{{ID: "tc1", Name: "fetch"}}},
+			{Content: "fetched"},
+			{Content: `{"result":"ok"}`},
+		},
+	}
+	toolDef := &fakeTool{
+		definition: core.ToolDefinition{Name: "fetch"},
+		result:     "data",
+	}
+	provider := &fakeContextProvider{
+		messages: []core.Message{core.NewSystemMessage("context info")},
+	}
+	loop := NewSpecializedLoop(SpecializedConfig{
+		SystemPrompt:    "sys",
+		Engine:          eng,
+		Schema:          core.Schema{Type: "object"},
+		Tools:           tool.NewRegistry(toolDef),
+		ContextProvider: provider,
+	})
+
+	result, err := loop.Call(context.Background(), "analyze")
+	require.NoError(t, err)
+	require.Equal(t, `{"result":"ok"}`, result.Content)
+	// Context retrieved once using original prompt, not phase2Prompt.
+	require.Equal(t, []string{"analyze"}, provider.queries)
+}
