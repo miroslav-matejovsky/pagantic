@@ -1,99 +1,79 @@
+// Package tui provides generic terminal UI primitives and an agent-harness
+// REPL reusable across CLI agent applications.
+//
+// # ARCHITECTURAL ROLE
+//
+// This package is an Interface (Shell) adapter. It is a thin boundary between
+// external terminal interaction and the internal execution core. It must
+// remain stateless (except minimal interaction context), thin (no business
+// logic), deterministic, and replaceable without affecting core behavior.
+//
+// INTERACTION FLOW
+//
+//	External Terminal Input
+//	    -> tui Adapter (this package)
+//	    -> ExecutionService (orchestrate layer)
+//	    -> Response Rendering
+//	    -> Terminal Output
+//
+// # PROHIBITED RESPONSIBILITIES
+//
+// This package must NOT perform orchestration logic, call inference directly,
+// execute tools, enforce output schemas, implement validation, or construct
+// prompts beyond composing from the prompt layer.
+//
+// # Colors
+//
+// Bold, Dim, Green, Red, Yellow, Cyan, and Grey wrap strings in ANSI escape
+// codes for styled terminal output without requiring a full curses library.
+//
+// # Output sanitization
+//
+// SanitizeOutput strips ANSI escape sequences and non-printable control
+// characters (including C1 controls 0x80-0x9f) from strings. Use it to
+// prevent terminal injection when rendering output from external sources
+// such as tool calls or subprocesses.
+//
+// # Prompt
+//
+// FPrompt reads a single trimmed, non-empty line from a bufio.Scanner after
+// printing a formatted prompt string to an io.Writer. It abstracts the common
+// read-loop boilerplate found in interactive REPL and chat interfaces.
+// Returns (line, error) where io.EOF signals clean end-of-input and
+// scanner.Err() is surfaced as a non-nil error.
+//
+// # Styled messages
+//
+// The F-prefixed functions (FInfo, FWarn, FError, FInfof, FWarnf, FErrorf)
+// print prefixed, colored messages for common CLI output patterns and accept
+// an io.Writer for testability. The Infof and Warnf convenience wrappers
+// write to stdout.
+//
+// # REPL
+//
+// REPL provides a generic command-dispatch read-eval-print loop. Register
+// commands with AddCommand (panics on empty Name or nil Run), set a banner
+// with SetBanner, and call Run to start. Built-in quit/exit/q commands exit
+// the loop, and an auto-generated help listing is provided when no explicit
+// help command is registered. Input and output streams are configurable for
+// testing and embedding.
+//
+// # Agent harness
+//
+// AgentREPL extends REPL into a full agent-harness terminal UI. It provides
+// built-in tools and chat commands, lazy inference engine loading via a
+// caller-supplied EngineLoader func, and an Engine(ctx) getter so custom
+// commands registered via AddCommand can access the loaded engine. Configure
+// via AgentConfig with title, banner, system prompt, optional instruction
+// sets, engine loader, tool registry, and local directory. System prompts
+// are composed using the prompt layer when instruction sets are provided.
+// Chat uses orchestrate.AgentLoop and tools from the tool package.
+//
+// # Rendering
+//
+// TerminalRenderer returns an *inference.StreamHandler that renders streaming
+// content, reasoning, and tool-call events to an io.Writer with ANSI colors.
+// FPrintUsage displays token usage statistics. UsageStats is a
+// dependency-free value type for passing usage data across package
+// boundaries without importing inference engine packages.
 package tui
-
-/*
-Package tui implements an external interaction adapter for the Pagantic system.
-
-This package represents a Shell layer responsible for translating a specific
-interaction modality into the internal execution model.
-
-GENERAL RESPONSIBILITY
-
-The tui adapter is a thin boundary layer between external user interaction
-and the internal system (execution service / orchestration core).
-
-It must:
-- Accept input from its interaction channel (CLI, TUI, or API)
-- Normalize input into a structured request model
-- Invoke the core execution service
-- Return structured responses to the caller
-
-
-ARCHITECTURAL ROLE
-
-This package belongs to the Interface (Shell) layer.
-
-It is NOT part of:
-- orchestration
-- retrieval / embeddings
-- tool execution
-- validation / constraints
-- prompt construction
-
-
-CORE ABSTRACTIONS TO IMPLEMENT
-
-The package should define:
-
-1. Transport Handling
-   - Input parsing (arguments, commands, HTTP payload, UI state)
-   - Output formatting (stdout, UI rendering, JSON responses)
-
-2. Request Mapping
-   - Conversion of external input into internal request structures
-   - Validation of basic input contract (syntax-level only)
-
-3. Execution Dispatch
-   - Interaction with a central ExecutionService / RuntimeFacade
-
-4. Response Mapping
-   - Conversion of internal responses into user-facing format
-
-
-CONSTRAINTS
-
-This package must remain:
-
-- Stateless (except minimal interaction context)
-- Thin (no business logic)
-- Deterministic (no hidden transformations)
-- Replaceable (can be swapped without affecting core system)
-
-
-PROHIBITED RESPONSIBILITIES
-
-This package must NOT:
-
-- perform orchestration logic
-- call inference engine directly
-- perform retrieval or embedding operations
-- execute tools
-- enforce output schemas or grammar
-- implement validation or correction logic
-- construct prompts
-
-
-INTERACTION FLOW
-
-External Request
-    ↓
-tui Adapter (this package)
-    ↓
-ExecutionService (core system)
-    ↓
-Response Mapping
-    ↓
-External Output
-
-
-GOAL
-
-Ensure that all external interaction channels are:
-
-- consistent
-- replaceable
-- decoupled from system core
-- aligned with defined contracts
-
-This package serves as a strict boundary enforcing separation between
-user interaction and system behavior.
-*/

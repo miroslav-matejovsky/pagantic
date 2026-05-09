@@ -28,8 +28,9 @@ components:
   L09_memory: { in: layers/09_memory }
   L10_observe: { in: layers/10_observe }
   kronk: { in: kronk }
-  tui: { in: tui }
-  api: { in: api }
+  tui: { in: adapters/tui }
+  api: { in: adapters/api }
+  cli: { in: adapters/cli }
 
 deps:
   # L00_core: {}
@@ -59,3 +60,5 @@ deps:
     mayDependOn: [L00_core, L01_inference, L02_orchestrate, L04_tool, L08_prompt, L10_observe]
   api:
     mayDependOn: [L00_core, L02_orchestrate, L10_observe]
+  cli:
+    mayDependOn: [L00_core, L01_inference, L02_orchestrate, L04_tool]

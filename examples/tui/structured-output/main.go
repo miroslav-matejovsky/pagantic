@@ -7,10 +7,10 @@ import (
 	"os/signal"
 	"time"
 
+	"github.com/miroslav-matejovsky/pagantic/adapters/tui"
 	"github.com/miroslav-matejovsky/pagantic/kronk"
 	core "github.com/miroslav-matejovsky/pagantic/layers/00_core"
 	orchestrate "github.com/miroslav-matejovsky/pagantic/layers/02_orchestrate"
-	"github.com/miroslav-matejovsky/pagantic/tui"
 )
 
 // const llmModel = "unsloth/gemma-4-E4B-it"

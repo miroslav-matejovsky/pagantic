@@ -1,99 +1,39 @@
+// Package cli implements a single-shot command-line adapter for Pagantic.
+//
+// # ARCHITECTURAL ROLE
+//
+// This package is an Interface (Shell) adapter. It is a thin boundary between
+// command-line invocation and the internal execution core. It must remain
+// stateless, thin (no business logic), deterministic, and replaceable without
+// affecting core behavior.
+//
+// INTERACTION FLOW
+//
+//	CLI Arguments / stdin
+//	    -> cli Adapter (this package)
+//	    -> ExecutionService (orchestrate layer)
+//	    -> Response Formatting
+//	    -> stdout
+//
+// Unlike the TUI adapter which provides an interactive REPL loop, the CLI
+// adapter executes a single inference request and exits. Input comes from
+// command-line arguments or stdin. Output goes to stdout.
+//
+// # PROHIBITED RESPONSIBILITIES
+//
+// This package must NOT perform orchestration logic, call inference directly,
+// execute tools, enforce output schemas, implement validation beyond input
+// contract checks, or construct prompts.
+//
+// # Runner
+//
+// Runner is the main entry point. Configure with RunConfig (engine, system
+// prompt, optional tools, stream handler, timeout). Call Run with a prompt
+// string to execute a single inference request and write the result to the
+// configured output writer.
+//
+// # Input
+//
+// ReadPrompt reads a prompt from command-line args (joined with spaces) or
+// falls back to reading all of stdin when no args are provided.
 package cli
-
-/*
-Package cli implements an external interaction adapter for the Pagantic system.
-
-This package represents a Shell layer responsible for translating a specific
-interaction modality into the internal execution model.
-
-GENERAL RESPONSIBILITY
-
-The cli adapter is a thin boundary layer between external user interaction
-and the internal system (execution service / orchestration core).
-
-It must:
-- Accept input from its interaction channel (CLI, TUI, or API)
-- Normalize input into a structured request model
-- Invoke the core execution service
-- Return structured responses to the caller
-
-
-ARCHITECTURAL ROLE
-
-This package belongs to the Interface (Shell) layer.
-
-It is NOT part of:
-- orchestration
-- retrieval / embeddings
-- tool execution
-- validation / constraints
-- prompt construction
-
-
-CORE ABSTRACTIONS TO IMPLEMENT
-
-The package should define:
-
-1. Transport Handling
-   - Input parsing (arguments, commands, HTTP payload, UI state)
-   - Output formatting (stdout, UI rendering, JSON responses)
-
-2. Request Mapping
-   - Conversion of external input into internal request structures
-   - Validation of basic input contract (syntax-level only)
-
-3. Execution Dispatch
-   - Interaction with a central ExecutionService / RuntimeFacade
-
-4. Response Mapping
-   - Conversion of internal responses into user-facing format
-
-
-CONSTRAINTS
-
-This package must remain:
-
-- Stateless (except minimal interaction context)
-- Thin (no business logic)
-- Deterministic (no hidden transformations)
-- Replaceable (can be swapped without affecting core system)
-
-
-PROHIBITED RESPONSIBILITIES
-
-This package must NOT:
-
-- perform orchestration logic
-- call inference engine directly
-- perform retrieval or embedding operations
-- execute tools
-- enforce output schemas or grammar
-- implement validation or correction logic
-- construct prompts
-
-
-INTERACTION FLOW
-
-External Request
-    ↓
-cli Adapter (this package)
-    ↓
-ExecutionService (core system)
-    ↓
-Response Mapping
-    ↓
-External Output
-
-
-GOAL
-
-Ensure that all external interaction channels are:
-
-- consistent
-- replaceable
-- decoupled from system core
-- aligned with defined contracts
-
-This package serves as a strict boundary enforcing separation between
-user interaction and system behavior.
-*/

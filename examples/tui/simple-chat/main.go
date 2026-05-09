@@ -6,10 +6,10 @@ import (
 	"os"
 	"os/signal"
 
+	"github.com/miroslav-matejovsky/pagantic/adapters/tui"
 	"github.com/miroslav-matejovsky/pagantic/kronk"
 	inference "github.com/miroslav-matejovsky/pagantic/layers/01_inference"
 	tool "github.com/miroslav-matejovsky/pagantic/layers/04_tool"
-	"github.com/miroslav-matejovsky/pagantic/tui"
 )
 
 const llmModel = "unsloth/gemma-4-E4B-it"

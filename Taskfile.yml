@@ -105,19 +105,24 @@ tasks:
   # --- running stuff ---
 
   run-simple-chat:
-    desc: Run the simple-chat example
+    desc: Run the simple-chat TUI example
     cmds:
-      - go run examples/simple-chat/main.go
+      - go run examples/tui/simple-chat/main.go
 
   run-tool-use:
-    desc: Run the tool-use example
+    desc: Run the tool-use TUI example
     cmds:
-      - go run examples/tool-use/main.go
+      - go run examples/tui/tool-use/main.go
 
   run-structured-output:
-    desc: Run the structured-output example
+    desc: Run the structured-output TUI example
     cmds:
-      - go run examples/structured-output/main.go
+      - go run examples/tui/structured-output/main.go
+
+  run-simple-query:
+    desc: Run the simple-query CLI example (pass prompt as args)
+    cmds:
+      - go run examples/cli/simple-query/main.go {{.CLI_ARGS}}
 
   # --- maintenance ---
 

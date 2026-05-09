@@ -8,11 +8,11 @@ import (
 	"os/signal"
 	"strings"
 
+	"github.com/miroslav-matejovsky/pagantic/adapters/tui"
 	"github.com/miroslav-matejovsky/pagantic/kronk"
 	core "github.com/miroslav-matejovsky/pagantic/layers/00_core"
 	inference "github.com/miroslav-matejovsky/pagantic/layers/01_inference"
 	tool "github.com/miroslav-matejovsky/pagantic/layers/04_tool"
-	"github.com/miroslav-matejovsky/pagantic/tui"
 )
 
 const llmModel = "unsloth/gemma-4-E4B-it"
