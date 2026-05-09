@@ -43,9 +43,10 @@
 // built-in tools and chat commands, lazy inference engine loading via a
 // caller-supplied EngineLoader func, and an Engine(ctx) getter so custom
 // commands registered via AddCommand can access the loaded engine. Configure
-// via AgentConfig with title, banner, system prompt, engine loader, tool
-// registry, and local directory. Chat uses orchestrate.AgentLoop and tools
-// from the tool package.
+// via AgentConfig with title, banner, system prompt, optional instruction
+// sets, engine loader, tool registry, and local directory. System prompts
+// are composed using the prompt layer when instruction sets are provided.
+// Chat uses orchestrate.AgentLoop and tools from the tool package.
 //
 // # Rendering
 //

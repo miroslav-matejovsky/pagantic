@@ -1,4 +1,4 @@
-package inference
+package kronk
 
 import (
 	"context"
@@ -10,12 +10,13 @@ import (
 
 	"github.com/ardanlabs/kronk/sdk/kronk/model"
 	core "github.com/miroslav-matejovsky/pagantic/layers/00_core"
+	inference "github.com/miroslav-matejovsky/pagantic/layers/01_inference"
 )
 
-// KronkAdapter wraps kronk chat engine and implements Engine.
-type KronkAdapter struct {
+// Adapter wraps kronk chat engine and implements inference.Engine.
+type Adapter struct {
 	chat    llmChat
-	handler *StreamHandler
+	handler *inference.StreamHandler
 }
 
 // llmChat is interface kronk engine satisfies.
@@ -24,22 +25,22 @@ type llmChat interface {
 	ModelConfig() model.Config
 }
 
-// NewKronkAdapter builds adapter for kronk chat engine.
-func NewKronkAdapter(chat llmChat, handler *StreamHandler) *KronkAdapter {
-	return &KronkAdapter{chat: chat, handler: handler}
+// NewAdapter builds adapter for kronk chat engine.
+func NewAdapter(chat llmChat, handler *inference.StreamHandler) *Adapter {
+	return &Adapter{chat: chat, handler: handler}
 }
 
 // WithStreamHandler returns copy of adapter that emits events to handler.
-func (ka *KronkAdapter) WithStreamHandler(handler *StreamHandler) Engine {
-	if ka == nil {
+func (a *Adapter) WithStreamHandler(handler *inference.StreamHandler) inference.Engine {
+	if a == nil {
 		return nil
 	}
-	return &KronkAdapter{chat: ka.chat, handler: handler}
+	return &Adapter{chat: a.chat, handler: handler}
 }
 
 // Infer runs one inference request through kronk.
-func (ka *KronkAdapter) Infer(ctx context.Context, req Request) (*Result, error) {
-	if ka == nil || ka.chat == nil {
+func (a *Adapter) Infer(ctx context.Context, req inference.Request) (*inference.Result, error) {
+	if a == nil || a.chat == nil {
 		return nil, fmt.Errorf("inference: nil adapter")
 	}
 
@@ -65,7 +66,7 @@ func (ka *KronkAdapter) Infer(ctx context.Context, req Request) (*Result, error)
 		}
 	}
 
-	ch, err := ka.chat.ChatStreaming(ctx, requestD)
+	ch, err := a.chat.ChatStreaming(ctx, requestD)
 	if err != nil {
 		return nil, fmt.Errorf("inference chat: %w", err)
 	}
@@ -103,16 +104,16 @@ loop:
 		case model.FinishReasonStop:
 			if delta != nil && delta.Content != "" {
 				if reasoning {
-					ka.handler.emitReasoning("\n")
+					a.handler.EmitReasoning("\n")
 				}
 				content.WriteString(delta.Content)
-				ka.handler.emitContent(delta.Content)
+				a.handler.EmitContent(delta.Content)
 			}
 			break loop
 
 		case model.FinishReasonTool:
 			if reasoning {
-				ka.handler.emitReasoning("\n")
+				a.handler.EmitReasoning("\n")
 			}
 
 			assistantMsg := core.Message{Role: core.RoleAssistant}
@@ -130,7 +131,7 @@ loop:
 						Arguments: map[string]any(tool.Function.Arguments),
 					}
 
-					ka.handler.emitToolCall(tool.Function.Name, string(argsJSON))
+					a.handler.EmitToolCall(tool.Function.Name, string(argsJSON))
 
 					assistantMsg.ToolCalls = append(assistantMsg.ToolCalls, call)
 					toolCalls = append(toolCalls, call)
@@ -148,14 +149,14 @@ loop:
 			}
 
 			if delta.Reasoning != "" {
-				ka.handler.emitReasoning(delta.Reasoning)
+				a.handler.EmitReasoning(delta.Reasoning)
 				reasoning = true
 				continue
 			}
 
 			if reasoning {
 				reasoning = false
-				ka.handler.emitReasoning("\n")
+				a.handler.EmitReasoning("\n")
 			}
 
 			if delta.Content == "" {
@@ -163,7 +164,7 @@ loop:
 			}
 
 			content.WriteString(delta.Content)
-			ka.handler.emitContent(delta.Content)
+			a.handler.EmitContent(delta.Content)
 		}
 	}
 
@@ -171,27 +172,27 @@ loop:
 		messages = append(messages, core.NewAssistantMessage(content.String()))
 	}
 
-	return &Result{
+	return &inference.Result{
 		Content:   content.String(),
 		ToolCalls: toolCalls,
 		Messages:  messages,
-		Usage:     extractUsage(ka.chat, lastResp),
+		Usage:     extractUsage(a.chat, lastResp),
 	}, nil
 }
 
 // ModelInfo reports model identity and limits.
-func (ka *KronkAdapter) ModelInfo() ModelInfo {
-	if ka == nil || ka.chat == nil {
-		return ModelInfo{}
+func (a *Adapter) ModelInfo() inference.ModelInfo {
+	if a == nil || a.chat == nil {
+		return inference.ModelInfo{}
 	}
 
-	cfg := ka.chat.ModelConfig()
+	cfg := a.chat.ModelConfig()
 	name := ""
 	if len(cfg.ModelFiles) > 0 {
 		name = path.Base(filepath.ToSlash(cfg.ModelFiles[0]))
 	}
 
-	return ModelInfo{
+	return inference.ModelInfo{
 		Name:          name,
 		ContextWindow: cfg.ContextWindow(),
 	}
