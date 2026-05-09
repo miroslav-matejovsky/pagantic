@@ -9,19 +9,22 @@ type StreamHandler struct {
 	OnToolCall  func(name, argsJSON string)
 }
 
-func (h *StreamHandler) emitContent(text string) {
+// EmitContent calls OnContent if handler and callback are non-nil.
+func (h *StreamHandler) EmitContent(text string) {
 	if h != nil && h.OnContent != nil {
 		h.OnContent(text)
 	}
 }
 
-func (h *StreamHandler) emitReasoning(text string) {
+// EmitReasoning calls OnReasoning if handler and callback are non-nil.
+func (h *StreamHandler) EmitReasoning(text string) {
 	if h != nil && h.OnReasoning != nil {
 		h.OnReasoning(text)
 	}
 }
 
-func (h *StreamHandler) emitToolCall(name, argsJSON string) {
+// EmitToolCall calls OnToolCall if handler and callback are non-nil.
+func (h *StreamHandler) EmitToolCall(name, argsJSON string) {
 	if h != nil && h.OnToolCall != nil {
 		h.OnToolCall(name, argsJSON)
 	}

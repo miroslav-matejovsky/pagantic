@@ -1,4 +1,4 @@
-package inference
+package kronk
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 
 	"github.com/ardanlabs/kronk/sdk/kronk/model"
 	core "github.com/miroslav-matejovsky/pagantic/layers/00_core"
+	inference "github.com/miroslav-matejovsky/pagantic/layers/01_inference"
 	"github.com/stretchr/testify/require"
 )
 
@@ -31,7 +32,7 @@ func stringPtr(s string) *string { return &s }
 
 func intPtr(n int) *int { return &n }
 
-func TestKronkAdapterInferContentOnly(t *testing.T) {
+func TestAdapterInferContentOnly(t *testing.T) {
 	temp := 0.2
 	chat := &mockChat{
 		cfg: model.Config{
@@ -56,7 +57,7 @@ func TestKronkAdapterInferContentOnly(t *testing.T) {
 		},
 	}
 
-	adapter := NewKronkAdapter(chat, nil)
+	adapter := NewAdapter(chat, nil)
 	schema := &core.Schema{
 		Type: "object",
 		Properties: map[string]core.Schema{
@@ -64,7 +65,7 @@ func TestKronkAdapterInferContentOnly(t *testing.T) {
 		},
 		Required: []string{"value"},
 	}
-	result, err := adapter.Infer(context.Background(), Request{
+	result, err := adapter.Infer(context.Background(), inference.Request{
 		Messages: []core.Message{
 			core.NewSystemMessage("sys"),
 			core.NewUserMessage("hello"),
@@ -107,7 +108,7 @@ func TestKronkAdapterInferContentOnly(t *testing.T) {
 	require.Equal(t, "hello", msgs[1]["content"])
 }
 
-func TestKronkAdapterInferToolCall(t *testing.T) {
+func TestAdapterInferToolCall(t *testing.T) {
 	chat := &mockChat{
 		responses: []model.ChatResponse{
 			{
@@ -129,8 +130,8 @@ func TestKronkAdapterInferToolCall(t *testing.T) {
 		},
 	}
 
-	adapter := NewKronkAdapter(chat, nil)
-	result, err := adapter.Infer(context.Background(), Request{
+	adapter := NewAdapter(chat, nil)
+	result, err := adapter.Infer(context.Background(), inference.Request{
 		Messages: []core.Message{core.NewUserMessage("find moon")},
 		Tools: []core.ToolDefinition{{
 			Name:        "search",
@@ -163,7 +164,7 @@ func TestKronkAdapterInferToolCall(t *testing.T) {
 	require.Equal(t, "search", function["name"])
 }
 
-func TestKronkAdapterInferStreamHandler(t *testing.T) {
+func TestAdapterInferStreamHandler(t *testing.T) {
 	chat := &mockChat{
 		responses: []model.ChatResponse{
 			{Choices: []model.Choice{{Delta: &model.ResponseMessage{Reasoning: "think"}}}},
@@ -180,7 +181,7 @@ func TestKronkAdapterInferStreamHandler(t *testing.T) {
 
 	var reasoning []string
 	var content []string
-	adapter := NewKronkAdapter(chat, &StreamHandler{
+	adapter := NewAdapter(chat, &inference.StreamHandler{
 		OnReasoning: func(text string) {
 			reasoning = append(reasoning, text)
 		},
@@ -189,7 +190,7 @@ func TestKronkAdapterInferStreamHandler(t *testing.T) {
 		},
 	})
 
-	result, err := adapter.Infer(context.Background(), Request{
+	result, err := adapter.Infer(context.Background(), inference.Request{
 		Messages: []core.Message{core.NewUserMessage("hi")},
 	})
 
@@ -199,13 +200,13 @@ func TestKronkAdapterInferStreamHandler(t *testing.T) {
 	require.Equal(t, []string{"he", "y"}, content)
 }
 
-func TestKronkAdapterModelInfo(t *testing.T) {
-	adapter := NewKronkAdapter(&mockChat{cfg: model.Config{
+func TestAdapterModelInfo(t *testing.T) {
+	adapter := NewAdapter(&mockChat{cfg: model.Config{
 		PtrContextWindow: intPtr(32000),
 		ModelFiles:       []string{"C:\\models\\qwen.gguf"},
 	}}, nil)
 
-	require.Equal(t, ModelInfo{
+	require.Equal(t, inference.ModelInfo{
 		Name:          "qwen.gguf",
 		ContextWindow: 32000,
 	}, adapter.ModelInfo())

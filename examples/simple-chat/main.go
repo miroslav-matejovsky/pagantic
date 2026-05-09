@@ -29,7 +29,7 @@ func main() {
 			if err != nil {
 				return nil, nil, err
 			}
-			return inference.NewKronkAdapter(krn, nil), cleanup, nil
+			return kronk.NewAdapter(krn, nil), cleanup, nil
 		},
 		Registry: registry,
 	})

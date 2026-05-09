@@ -12,6 +12,7 @@ import (
 	inference "github.com/miroslav-matejovsky/pagantic/layers/01_inference"
 	orchestrate "github.com/miroslav-matejovsky/pagantic/layers/02_orchestrate"
 	tool "github.com/miroslav-matejovsky/pagantic/layers/04_tool"
+	prompt "github.com/miroslav-matejovsky/pagantic/layers/08_prompt"
 )
 
 // AgentConfig controls AgentREPL creation.
@@ -20,8 +21,12 @@ type AgentConfig struct {
 	Title string
 	// Banner is passed to the underlying REPL as a startup message.
 	Banner string
-	// SystemPrompt defines the built-in chat loop's role.
+	// SystemPrompt defines the built-in chat loop's base system prompt.
 	SystemPrompt string
+	// Instructions are optional structured rule sets appended to
+	// SystemPrompt when building the system message. Uses the prompt
+	// layer for composable, testable prompt construction.
+	Instructions []prompt.InstructionSet
 	// EngineLoader is called once on first use to load the inference engine.
 	// It returns the engine, a cleanup func (may be nil), and an error.
 	// Required.
@@ -174,7 +179,7 @@ func (t *AgentREPL) runChat(ctx context.Context) error {
 	_, _ = fmt.Fprintln(t.repl.Out)
 
 	chatAgent := orchestrate.NewAgentLoop(orchestrate.LoopConfig{
-		SystemPrompt: t.cfg.SystemPrompt,
+		SystemPrompt: t.buildSystemPrompt(),
 		Engine:       t.engine,
 		Tools:        t.cfg.Registry,
 		Stream:       TerminalRenderer(t.repl.Out),
@@ -223,4 +228,18 @@ func usageStats(u core.TokenUsage) UsageStats {
 		ContextWindow:   u.ContextWindow,
 		TokensPerSecond: u.TokensPerSecond,
 	}
+}
+
+// buildSystemPrompt composes the system prompt string from base prompt and
+// optional instruction sets using the prompt layer.
+func (t *AgentREPL) buildSystemPrompt() string {
+	if len(t.cfg.Instructions) == 0 {
+		return t.cfg.SystemPrompt
+	}
+
+	sp := prompt.SystemPrompt{
+		Base:         t.cfg.SystemPrompt,
+		Instructions: t.cfg.Instructions,
+	}
+	return sp.Build().Content
 }

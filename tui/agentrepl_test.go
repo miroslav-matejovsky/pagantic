@@ -9,6 +9,7 @@ import (
 
 	inference "github.com/miroslav-matejovsky/pagantic/layers/01_inference"
 	tool "github.com/miroslav-matejovsky/pagantic/layers/04_tool"
+	prompt "github.com/miroslav-matejovsky/pagantic/layers/08_prompt"
 )
 
 type fakeEngine struct{}
@@ -204,3 +205,34 @@ func TestAgentREPL_LoadingWarningToErrOut(t *testing.T) {
 
 func TestInfof_Smoke(t *testing.T) { Infof("test %d", 1) }
 func TestWarnf_Smoke(t *testing.T) { Warnf("test %d", 2) }
+
+func TestBuildSystemPrompt_NoInstructions(t *testing.T) {
+	ar, _, _ := newTestREPL(stubLoader(nil))
+	got := ar.buildSystemPrompt()
+	if got != "You are a test agent." {
+		t.Errorf("expected plain system prompt, got %q", got)
+	}
+}
+
+func TestBuildSystemPrompt_WithInstructions(t *testing.T) {
+	ar := NewAgentREPL(AgentConfig{
+		Title:        "Test",
+		SystemPrompt: "Base prompt.",
+		Instructions: []prompt.InstructionSet{
+			{Name: "Safety", Rules: []string{"Do not harm", "Be honest"}},
+		},
+		EngineLoader: stubLoader(nil),
+		Registry:     stubRegistry,
+	})
+
+	got := ar.buildSystemPrompt()
+	if !strings.Contains(got, "Base prompt.") {
+		t.Error("missing base prompt")
+	}
+	if !strings.Contains(got, "## Safety") {
+		t.Error("missing instruction set header")
+	}
+	if !strings.Contains(got, "- Do not harm") {
+		t.Error("missing instruction rule")
+	}
+}

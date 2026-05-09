@@ -5,6 +5,9 @@
 // manages retries, branching, and tool loops. System is not one inference
 // call. System is controlled multi-step loop.
 //
+// Depends on constraint (layer 5) for structured output: ChatStructured uses
+// RepairJSON and SchemaValidator to enforce valid JSON from model output.
+//
 // Key types:
 //   - AgentLoop
 //   - SpecializedLoop

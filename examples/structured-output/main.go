@@ -9,7 +9,6 @@ import (
 
 	"github.com/miroslav-matejovsky/pagantic/kronk"
 	core "github.com/miroslav-matejovsky/pagantic/layers/00_core"
-	inference "github.com/miroslav-matejovsky/pagantic/layers/01_inference"
 	orchestrate "github.com/miroslav-matejovsky/pagantic/layers/02_orchestrate"
 	"github.com/miroslav-matejovsky/pagantic/tui"
 )
@@ -27,7 +26,7 @@ func main() {
 	}
 	defer cleanup()
 
-	engine := inference.NewKronkAdapter(krn, nil)
+	engine := kronk.NewAdapter(krn, nil)
 	schema := core.Schema{
 		Type: "object",
 		Properties: map[string]core.Schema{
