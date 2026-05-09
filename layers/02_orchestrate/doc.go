@@ -18,9 +18,11 @@
 //   - RoutingStrategy
 //
 // ContextProvider is an optional interface that retrieves relevant context
-// messages before inference. context.ContextBuilder satisfies it via Go
-// structural typing - no import of context package needed. Context is
-// injected before each user message in AgentLoop, and once per call in
-// SpecializedLoop using the original prompt (not the phase2 structured
-// output prompt).
+// messages before inference. The pagantic layers/03_context.ContextBuilder
+// (typically imported with alias pctx) satisfies it via Go structural typing -
+// no explicit interface declaration is needed in that package. Context is
+// injected ephemerally per user message in AgentLoop.Chat (not stored in the
+// conversation buffer, preventing accumulation across turns). In SpecializedLoop,
+// context is retrieved once per Call using the original prompt and injected into
+// a fresh inner loop before the tool/structured phases.
 package orchestrate

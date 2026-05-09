@@ -42,6 +42,10 @@ func NewSpecializedLoop(cfg SpecializedConfig) *SpecializedLoop {
 // Context is retrieved once using original prompt, avoiding poor retrieval
 // with phase2Prompt during the structured output step.
 func (sl *SpecializedLoop) Call(ctx context.Context, prompt string) (*inference.Result, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
 	inner := NewAgentLoop(LoopConfig{
 		Engine:       sl.cfg.Engine,
 		Tools:        sl.cfg.Tools,

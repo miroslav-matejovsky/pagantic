@@ -6,9 +6,11 @@
 //     relevant ones by keyword scoring. On each user message, ContextBuilder
 //     retrieves fresh context so different questions get different knowledge.
 //
-//   - Layer 2 (orchestrate): AgentLoop calls ContextProvider before every
-//     inference step. The model receives bounded, relevant knowledge per turn
-//     rather than a fixed context window. This is the control loop that makes
+//   - Layer 2 (orchestrate): AgentLoop calls ContextProvider before each user
+//     message turn. The model receives bounded, relevant knowledge per turn
+//     rather than a fixed context window. Context is injected ephemerally
+//     (not stored in history), so different questions get different context
+//     without accumulating stale knowledge. This is the control loop that makes
 //     RAG work - deterministic retrieval feeding probabilistic inference.
 //
 //   - Layer 1 (inference): Engine loaded lazily on first chat message. Handles
@@ -52,7 +54,7 @@ func main() {
 
 	repl := tui.NewAgentREPL(tui.AgentConfig{
 		Title:  "context-chat",
-		Banner: "Chat with context retrieval. Type 'chat' to start, 'quit' to exit.\nAsk about Go programming - the model has domain knowledge loaded.",
+		Banner: "Chat with context retrieval. Type 'ctx-chat' to start, 'quit' to exit.\nAsk about Go programming - the model has domain knowledge loaded.",
 		SystemPrompt: "You are a Go programming assistant. Answer questions using the provided context. " +
 			"If context is relevant, reference it. If not, say you don't have specific information.",
 		EngineLoader: func(ctx context.Context) (inference.Engine, func(), error) {

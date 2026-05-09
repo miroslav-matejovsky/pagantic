@@ -399,4 +399,17 @@ func TestAgentLoop_Chat_ContextRetrievedEveryTurn(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Equal(t, []string{"q1", "q2"}, provider.queries)
+
+	// Context is ephemeral: second inference call must NOT include "ctx" from turn 1.
+	// Expected: [sys, ctx, q1, assistant, ctx, q2] - ephemeral ctx appears per turn.
+	// The buffer (memory) must NOT grow with accumulated ctx messages.
+	// Second call req.Messages: [sys, q1-ans-in-history, ctx, q2].
+	secondCallMsgs := eng.calls[1].Messages
+	ctxCount := 0
+	for _, m := range secondCallMsgs {
+		if m.Content == "ctx" {
+			ctxCount++
+		}
+	}
+	require.Equal(t, 1, ctxCount, "exactly one ctx message per turn, none accumulated from prior turn")
 }
