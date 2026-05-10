@@ -19,6 +19,7 @@ type Request struct {
 	Messages    []core.Message
 	Tools       []core.ToolDefinition
 	Schema      *core.Schema
+	Grammar     string // GBNF grammar for decoder-level output constraint; empty means none
 	MaxTokens   int
 	Temperature *float64 // nil means use model default
 	Options     map[string]any

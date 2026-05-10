@@ -7,15 +7,21 @@
 //
 // Depends on constraint (layer 5) for structured output: ChatStructured uses
 // RepairJSON and SchemaValidator to enforce valid JSON from model output.
+// Grammar support passes GBNF grammar strings through to the inference engine
+// for decoder-level output constraints.
 //
 // Key types:
 //   - AgentLoop
 //   - SpecializedLoop
 //   - ContextProvider
 //   - ExecutionPlan
+//   - PlanExecutor
+//   - StepHandler
 //   - Step
-//   - StepExecutor
 //   - RoutingStrategy
+//   - CandidateReranker
+//   - RedundantLoop
+//   - VotingStrategy
 //
 // ContextProvider is an optional interface that retrieves relevant context
 // messages before inference. The pagantic layers/03_context.ContextBuilder
@@ -25,4 +31,7 @@
 // conversation buffer, preventing accumulation across turns). In SpecializedLoop,
 // context is retrieved once per Call using the original prompt and injected into
 // a fresh inner loop before the tool/structured phases.
+//
+// CandidateReranker follows the same structural typing pattern. The
+// rerank.Reranker type satisfies it without importing the rerank package.
 package orchestrate

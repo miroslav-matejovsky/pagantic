@@ -40,3 +40,26 @@ type StepExecutor interface {
 type RoutingStrategy interface {
 	Route(ctx context.Context, plan ExecutionPlan) (ExecutionPlan, error)
 }
+
+// RerankCandidate represents a scored item for plan-level reranking.
+// Mirrors rerank.Candidate for structural typing compatibility.
+type RerankCandidate struct {
+	Content  string
+	Score    float64
+	Source   string
+	Metadata map[string]any
+}
+
+// RerankInput groups candidates with original query for reranking.
+type RerankInput struct {
+	Query      string
+	Candidates []RerankCandidate
+}
+
+// CandidateReranker scores and filters candidates. The rerank.Reranker type
+// satisfies this interface when wrapped with an adapter function that converts
+// between orchestrate and rerank types. This follows the same structural
+// boundary pattern as ContextProvider.
+type CandidateReranker interface {
+	Rerank(ctx context.Context, input RerankInput) ([]RerankCandidate, error)
+}

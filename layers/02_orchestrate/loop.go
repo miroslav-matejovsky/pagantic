@@ -30,6 +30,7 @@ type LoopConfig struct {
 	Engine            inference.Engine
 	Tools             *tool.Registry
 	SystemPrompt      string
+	Grammar           string // GBNF grammar for decoder-level constraint; empty means none
 	MaxTokens         int
 	MaxToolIterations int // max tool-call loop rounds, 0 uses default (20)
 	Stream            *inference.StreamHandler
@@ -142,6 +143,7 @@ func (al *AgentLoop) ChatStructured(ctx context.Context, userMessage string, sch
 	result, err := al.infer(ctx, inference.Request{
 		Messages:    messages,
 		Schema:      &schema,
+		Grammar:     al.cfg.Grammar,
 		MaxTokens:   al.cfg.MaxTokens,
 		Temperature: &temperature,
 		Options: map[string]any{

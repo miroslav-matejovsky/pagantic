@@ -69,6 +69,7 @@
     "deadcode",
     "Feedforward",
     "GBNF",
+    "GGML",
     "golangci",
     "gopls",
     "gotestsum",

@@ -75,9 +75,16 @@ Adapters live under `adapters/` and serve as thin boundary layers between extern
 
 ## Examples
 
+- **examples/cli/simple-query** - Single-shot CLI query
+- **examples/cli/context-query** - Single-shot CLI query with context retrieval (RAG)
+- **examples/cli/grammar-query** - GBNF grammar-constrained output
+- **examples/cli/rerank-query** - Query with document reranking via ExecutionPlan
+- **examples/cli/redundant-query** - Redundant inference with majority voting (TMR)
 - **examples/tui/simple-chat** - Minimal interactive chat REPL
 - **examples/tui/tool-use** - Chat with a custom Go tool (dice roller)
 - **examples/tui/structured-output** - SpecializedLoop with JSON schema output
 - **examples/tui/context-chat** - Interactive chat with per-turn context retrieval (RAG)
-- **examples/cli/simple-query** - Single-shot CLI query
-- **examples/cli/context-query** - Single-shot CLI query with context retrieval (RAG)
+
+## Documentation
+
+Full HTML documentation is available at `docs/index.html`.
