@@ -25,6 +25,8 @@ type RunConfig struct {
 	SystemPrompt string
 	// Registry provides tools for the agent loop. May be nil.
 	Registry *tool.Registry
+	// ContextProvider retrieves context before each inference call. May be nil.
+	ContextProvider orchestrate.ContextProvider
 	// Stream receives streaming tokens during inference. May be nil.
 	Stream *inference.StreamHandler
 	// Timeout limits total execution time. Zero uses DefaultTimeout (120s).
@@ -67,10 +69,11 @@ func (r *Runner) Run(ctx context.Context, prompt string) error {
 	defer cancel()
 
 	agent := orchestrate.NewAgentLoop(orchestrate.LoopConfig{
-		SystemPrompt: r.cfg.SystemPrompt,
-		Engine:       r.cfg.Engine,
-		Tools:        r.cfg.Registry,
-		Stream:       r.cfg.Stream,
+		SystemPrompt:    r.cfg.SystemPrompt,
+		Engine:          r.cfg.Engine,
+		Tools:           r.cfg.Registry,
+		Stream:          r.cfg.Stream,
+		ContextProvider: r.cfg.ContextProvider,
 	})
 
 	result, err := agent.Chat(ctx, prompt)
