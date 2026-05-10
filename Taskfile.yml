@@ -129,6 +129,21 @@ tasks:
     cmds:
       - go run examples/cli/context-query/main.go {{.CLI_ARGS}}
 
+  run-grammar-query:
+    desc: Run the grammar-query CLI example with GBNF constrained output (pass prompt as args)
+    cmds:
+      - go run examples/cli/grammar-query/main.go {{.CLI_ARGS}}
+
+  run-rerank-query:
+    desc: Run the rerank-query CLI example with document reranking (pass prompt as args)
+    cmds:
+      - go run examples/cli/rerank-query/main.go {{.CLI_ARGS}}
+
+  run-redundant-query:
+    desc: Run the redundant-query CLI example with majority voting (pass prompt as args)
+    cmds:
+      - go run examples/cli/redundant-query/main.go {{.CLI_ARGS}}
+
   run-context-chat:
     desc: Run the context-chat TUI example with per-turn context retrieval
     cmds:

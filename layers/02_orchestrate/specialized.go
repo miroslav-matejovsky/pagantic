@@ -19,6 +19,7 @@ type SpecializedConfig struct {
 	Tools           *tool.Registry
 	SystemPrompt    string
 	Schema          core.Schema
+	Grammar         string // GBNF grammar for decoder-level constraint; empty means none
 	MaxTokens       int
 	Stream          *inference.StreamHandler
 	Observer        observe.EventLog
@@ -50,6 +51,7 @@ func (sl *SpecializedLoop) Call(ctx context.Context, prompt string) (*inference.
 		Engine:       sl.cfg.Engine,
 		Tools:        sl.cfg.Tools,
 		SystemPrompt: sl.cfg.SystemPrompt,
+		Grammar:      sl.cfg.Grammar,
 		MaxTokens:    sl.cfg.MaxTokens,
 		Stream:       sl.cfg.Stream,
 		Observer:     sl.cfg.Observer,

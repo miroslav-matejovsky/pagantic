@@ -8,8 +8,7 @@
 //   - OutputValidator validates raw model output.
 //   - ValidationResult reports validity, errors, and repaired output.
 //   - RepairJSON closes common truncated JSON from LLM output.
-//
-// TODO:
-//   - GrammarDefinition for GBNF constraints.
-//   - DecoderConstraint for decoder-level enforcement.
+//   - GrammarDefinition holds GBNF grammar for decoder-level constraints.
+//   - DecoderConstraint interface for decoder-level enforcement.
+//   - GrammarConstraint wraps GrammarDefinition as DecoderConstraint.
 package constraint

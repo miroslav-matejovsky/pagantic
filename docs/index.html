@@ -1,0 +1,820 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>pagantic - Probabilistic Agentic Control System</title>
+<style>
+:root {
+  --bg: #fafafa;
+  --fg: #1a1a1a;
+  --accent: #2563eb;
+  --accent-light: #dbeafe;
+  --border: #e5e7eb;
+  --code-bg: #f3f4f6;
+  --code-fg: #111827;
+  --nav-bg: #111827;
+  --nav-fg: #e5e7eb;
+  --layer-bg: #f9fafb;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  color: var(--fg);
+  background: var(--bg);
+  line-height: 1.6;
+}
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+nav {
+  background: var(--nav-bg);
+  color: var(--nav-fg);
+  padding: 1rem 2rem;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: 2rem;
+  flex-wrap: wrap;
+}
+nav .logo { font-weight: 700; font-size: 1.25rem; color: #fff; }
+nav a { color: var(--nav-fg); font-size: 0.875rem; }
+nav a:hover { color: #fff; text-decoration: none; }
+.container { max-width: 960px; margin: 0 auto; padding: 2rem; }
+h1 { font-size: 2.5rem; margin-bottom: 0.5rem; }
+h2 { font-size: 1.75rem; margin-top: 3rem; margin-bottom: 1rem; padding-bottom: 0.5rem; border-bottom: 2px solid var(--border); }
+h3 { font-size: 1.25rem; margin-top: 2rem; margin-bottom: 0.75rem; }
+h4 { font-size: 1.1rem; margin-top: 1.5rem; margin-bottom: 0.5rem; }
+p { margin-bottom: 1rem; }
+ul, ol { margin-bottom: 1rem; padding-left: 1.5rem; }
+li { margin-bottom: 0.25rem; }
+pre {
+  background: var(--code-bg);
+  color: var(--code-fg);
+  padding: 1rem;
+  border-radius: 6px;
+  overflow-x: auto;
+  margin-bottom: 1rem;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  border: 1px solid var(--border);
+}
+code {
+  background: var(--code-bg);
+  padding: 0.15em 0.35em;
+  border-radius: 3px;
+  font-size: 0.9em;
+}
+pre code { background: none; padding: 0; }
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 1.5rem;
+}
+th, td {
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border);
+}
+th { background: var(--code-bg); font-weight: 600; }
+.hero {
+  text-align: center;
+  padding: 3rem 0;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 2rem;
+}
+.hero p { font-size: 1.2rem; color: #6b7280; }
+.arch-diagram {
+  background: var(--code-bg);
+  padding: 1.5rem;
+  border-radius: 8px;
+  font-family: monospace;
+  white-space: pre;
+  overflow-x: auto;
+  margin-bottom: 1.5rem;
+  border: 1px solid var(--border);
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+.layer-card {
+  background: var(--layer-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1.25rem;
+  margin-bottom: 1rem;
+}
+.layer-card h4 { margin-top: 0; color: var(--accent); }
+.badge {
+  display: inline-block;
+  background: var(--accent-light);
+  color: var(--accent);
+  padding: 0.15em 0.5em;
+  border-radius: 4px;
+  font-size: 0.8em;
+  font-weight: 600;
+}
+.note {
+  background: #fffbeb;
+  border-left: 4px solid #f59e0b;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+  border-radius: 0 6px 6px 0;
+}
+footer {
+  text-align: center;
+  padding: 2rem;
+  color: #9ca3af;
+  border-top: 1px solid var(--border);
+  margin-top: 3rem;
+}
+</style>
+</head>
+<body>
+
+<nav>
+  <span class="logo">pagantic</span>
+  <a href="#overview">Overview</a>
+  <a href="#architecture">Architecture</a>
+  <a href="#layers">Layers</a>
+  <a href="#adapters">Adapters</a>
+  <a href="#engine">Engine</a>
+  <a href="#features">Features</a>
+  <a href="#examples">Examples</a>
+  <a href="#getting-started">Getting Started</a>
+  <a href="#design">Design</a>
+</nav>
+
+<div class="container">
+
+<!-- HERO -->
+<div class="hero">
+  <h1>pagantic</h1>
+  <p>Probabilistic Agentic Control System</p>
+  <p style="font-size: 1rem; margin-top: 0.5rem;">
+    LLM harness with deterministic control architecture around probabilistic inference.
+  </p>
+</div>
+
+<!-- OVERVIEW -->
+<h2 id="overview">Overview</h2>
+<p>
+  pagantic wraps LLM inference with a deterministic control system. Models are probabilistic -
+  they generate tokens stochastically. The harness adds deterministic scaffolding: timeouts,
+  tool execution, output validation, context retrieval, structured output enforcement,
+  candidate reranking, and redundant inference with voting.
+</p>
+<p>
+  Inspired by <a href="https://martinfowler.com/articles/harness-engineering.html">
+  Harness engineering for coding agent users</a>. Uses
+  <a href="https://github.com/ardanlabs/kronk">kronk</a> for local LLM engine access.
+</p>
+
+<!-- ARCHITECTURE -->
+<h2 id="architecture">Architecture</h2>
+<p>
+  10-layer system with explicit architectural boundaries, adapter-based I/O,
+  and a dedicated engine wrapper. Dependencies flow downward only. No circular
+  imports. Architecture rules enforced by <code>go-arch-lint</code>.
+</p>
+
+<div class="arch-diagram">
+                    +---------------------------+
+                    |         Adapters           |
+                    |  cli  |  tui  |  api       |
+                    +-------+-------+------------+
+                            |
+                    +-------v-------+
+                    |   orchestrate |  Control loop, agent loops
+                    +-------+-------+
+                            |
+        +-------+-------+---+---+-------+-------+
+        |       |       |       |       |       |
+     context  tool  constraint rerank validate prompt
+        |       |       |       |       |       |
+        +-------+-------+---+---+-------+-------+
+                            |
+                    +-------v-------+
+                    |   inference   |  Engine interface
+                    +-------+-------+
+                            |
+                    +-------v-------+
+                    |     kronk     |  SDK adapter
+                    +---------------+
+                            |
+                    +-------v-------+
+                    |     core      |  Shared domain types
+                    +---------------+
+</div>
+
+<h3>Dependency Rules</h3>
+<ul>
+  <li>Each layer lives under <code>layers/</code> with a numeric prefix enforcing direction</li>
+  <li>Higher layers may depend on lower layers, never the reverse</li>
+  <li>Cross-layer communication uses interfaces and structural typing</li>
+  <li>Adapters depend on orchestrate and select layers - never on each other</li>
+  <li>Core has zero dependencies - it is shared vocabulary only</li>
+</ul>
+
+<!-- LAYERS -->
+<h2 id="layers">Layers</h2>
+
+<table>
+  <tr><th>Layer</th><th>Package</th><th>Purpose</th></tr>
+  <tr><td>0</td><td>core</td><td>Shared domain types - Message, ToolCall, Schema, TokenUsage</td></tr>
+  <tr><td>1</td><td>inference</td><td>Engine interface for model inference</td></tr>
+  <tr><td>2</td><td>orchestrate</td><td>Control loop - AgentLoop, SpecializedLoop, PlanExecutor, RedundantLoop</td></tr>
+  <tr><td>3</td><td>context</td><td>Knowledge retrieval - Retriever, ContextBuilder</td></tr>
+  <tr><td>4</td><td>tool</td><td>Tool registry and execution</td></tr>
+  <tr><td>5</td><td>constraint</td><td>Output enforcement - JSON validation, repair, schema, GBNF grammar</td></tr>
+  <tr><td>6</td><td>rerank</td><td>Candidate scoring and reranking</td></tr>
+  <tr><td>7</td><td>validate</td><td>Guardrails, rule validation, retry policy</td></tr>
+  <tr><td>8</td><td>prompt</td><td>Prompt construction - SystemPrompt, InstructionSet, Template</td></tr>
+  <tr><td>9</td><td>memory</td><td>State management - ConversationBuffer, SessionState, WorkingMemory</td></tr>
+  <tr><td>10</td><td>observe</td><td>Tracing, metrics, event logging, cost tracking</td></tr>
+</table>
+
+<!-- Layer 0: Core -->
+<div class="layer-card">
+  <h4>Layer 0 - core <span class="badge">shared vocabulary</span></h4>
+  <p>
+    Shared domain types used across all layers. Simple data structures with no behavior
+    beyond construction helpers. No package may depend on core for logic - only for type definitions.
+  </p>
+  <p>Key types:</p>
+  <ul>
+    <li><code>Message</code> - conversation message with Role, Content, ToolCalls</li>
+    <li><code>Schema</code> - JSON Schema subset for structured output and tool parameters</li>
+    <li><code>ToolCall</code> - assistant's request to execute a tool</li>
+    <li><code>ToolDefinition</code> - tool metadata and parameter schema</li>
+    <li><code>TokenUsage</code> - token consumption and throughput metrics</li>
+  </ul>
+<pre><code>// Roles
+msg := core.NewUserMessage("Hello")
+msg := core.NewSystemMessage("You are helpful.")
+msg := core.NewAssistantMessage("Hi there!")
+msg := core.NewToolResultMessage(callID, "search", "results...")</code></pre>
+</div>
+
+<!-- Layer 1: Inference -->
+<div class="layer-card">
+  <h4>Layer 1 - inference <span class="badge">execution substrate</span></h4>
+  <p>
+    Accepts structured prompt input and produces raw model output. Knows nothing about
+    tools, workflows, schemas beyond transport, or business rules.
+  </p>
+  <p>Key types:</p>
+  <ul>
+    <li><code>Engine</code> - core inference abstraction: <code>Infer(ctx, Request) (*Result, error)</code></li>
+    <li><code>Request</code> - typed input: Messages, Tools, Schema, Grammar, MaxTokens, Temperature</li>
+    <li><code>Result</code> - typed output: Content, ToolCalls, Messages, Usage</li>
+    <li><code>StreamHandler</code> - callbacks for streaming: OnContent, OnReasoning, OnToolCall</li>
+  </ul>
+<pre><code>result, err := engine.Infer(ctx, inference.Request{
+    Messages:  messages,
+    MaxTokens: 2048,
+    Grammar:   `root ::= "yes" | "no"`,  // GBNF decoder constraint
+})</code></pre>
+</div>
+
+<!-- Layer 2: Orchestrate -->
+<div class="layer-card">
+  <h4>Layer 2 - orchestrate <span class="badge">control loop</span></h4>
+  <p>
+    Drives work across many inference steps. Breaks requests into steps, routes work,
+    enforces order, manages retries and tool loops.
+  </p>
+  <p>Key types:</p>
+  <ul>
+    <li><code>AgentLoop</code> - stateful multi-turn agent with tool call loop</li>
+    <li><code>SpecializedLoop</code> - stateless single-shot with optional tools then schema-constrained output</li>
+    <li><code>PlanExecutor</code> - runs ExecutionPlan steps with pluggable handlers</li>
+    <li><code>RedundantLoop</code> - N-version inference with voting for reliability</li>
+    <li><code>ContextProvider</code> - interface for context retrieval (structural typing)</li>
+    <li><code>CandidateReranker</code> - interface for reranking (structural typing)</li>
+    <li><code>VotingStrategy</code> - MajorityVoting, UnanimityVoting</li>
+  </ul>
+<pre><code>// Multi-turn chat with tools
+agent := orchestrate.NewAgentLoop(orchestrate.LoopConfig{
+    Engine:       engine,
+    Tools:        registry,
+    SystemPrompt: "You are helpful.",
+})
+result, err := agent.Chat(ctx, "Roll 2d6")
+
+// Structured single-shot
+sl := orchestrate.NewSpecializedLoop(orchestrate.SpecializedConfig{
+    Engine: engine, Schema: schema, Grammar: grammarStr,
+})
+result, err := sl.Call(ctx, "Classify this text")
+
+// Redundant inference
+rl := orchestrate.NewRedundantLoop(orchestrate.RedundantConfig{
+    Engine: engine, Schema: schema, N: 3, Voting: orchestrate.MajorityVoting{},
+})
+result, err := rl.Call(ctx, prompt)</code></pre>
+</div>
+
+<!-- Layer 3: Context -->
+<div class="layer-card">
+  <h4>Layer 3 - context <span class="badge">knowledge retrieval</span></h4>
+  <p>
+    Gives the model relevant, bounded knowledge. The model never acts on unconstrained knowledge.
+  </p>
+  <p>Key types:</p>
+  <ul>
+    <li><code>Retriever</code> - interface: <code>Retrieve(ctx, query, maxResults) ([]Chunk, error)</code></li>
+    <li><code>InMemoryRetriever</code> - keyword-matching retriever for bounded domains</li>
+    <li><code>ContextBuilder</code> - assembles retrieved chunks into system messages</li>
+    <li><code>Document</code> - source document with Content and Source</li>
+    <li><code>Chunk</code> - scored document fragment</li>
+  </ul>
+<pre><code>retriever := pctx.NewInMemoryRetriever(
+    pctx.Document{Content: "Go interfaces are implicit.", Source: "go-docs"},
+)
+builder := &amp;pctx.ContextBuilder{Retriever: retriever, MaxChunks: 3}
+msgs, err := builder.Build(ctx, "How do interfaces work?")</code></pre>
+</div>
+
+<!-- Layer 4: Tool -->
+<div class="layer-card">
+  <h4>Layer 4 - tool <span class="badge">deterministic capability</span></h4>
+  <p>
+    Runs operations outside the model. All side effects live here, never in the model.
+  </p>
+  <p>Key types:</p>
+  <ul>
+    <li><code>Tool</code> - interface: Info, Definition, Execute, Available</li>
+    <li><code>Registry</code> - groups tools and dispatches execution by name</li>
+    <li><code>ToolExecutor</code> - adds observability around registry calls</li>
+    <li><code>ToolType</code> - TypeGo (pure Go) or TypeCLI (external binary)</li>
+  </ul>
+<pre><code>registry := tool.NewRegistry(&amp;myTool{})
+output, err := registry.Execute("tool_name", args)</code></pre>
+</div>
+
+<!-- Layer 5: Constraint -->
+<div class="layer-card">
+  <h4>Layer 5 - constraint <span class="badge">output enforcement</span></h4>
+  <p>
+    Enforces deterministic output at the system boundary. No unstructured text crosses.
+  </p>
+  <p>Key types:</p>
+  <ul>
+    <li><code>OutputValidator</code> - validates raw model output</li>
+    <li><code>JSONValidator</code> - checks and optionally repairs JSON</li>
+    <li><code>SchemaValidator</code> - validates JSON against core.Schema</li>
+    <li><code>RepairJSON</code> - closes truncated JSON (missing braces, brackets, quotes)</li>
+    <li><code>NormalizeEnumValues</code> - rewrites enum strings to canonical case</li>
+    <li><code>GrammarDefinition</code> - holds GBNF grammar for decoder constraints</li>
+    <li><code>DecoderConstraint</code> - interface for decoder-level enforcement</li>
+    <li><code>GrammarConstraint</code> - wraps GrammarDefinition as DecoderConstraint</li>
+  </ul>
+<pre><code>// Post-hoc validation
+sv := constraint.NewSchemaValidator(schema)
+result := sv.Validate(jsonOutput)
+
+// Decoder constraint (prevents invalid tokens)
+grammar := constraint.GrammarDefinition{
+    Name:    "sentiment",
+    Grammar: `root ::= "positive" | "negative" | "neutral"`,
+}
+err := grammar.Validate()  // checks for root rule</code></pre>
+</div>
+
+<!-- Layer 6: Rerank -->
+<div class="layer-card">
+  <h4>Layer 6 - rerank <span class="badge">candidate evaluation</span></h4>
+  <p>
+    Scores retrieved or generated candidates, reorders by relevance, picks best subset.
+    Secondary reasoning layer correcting initial approximations.
+  </p>
+  <p>Key types:</p>
+  <ul>
+    <li><code>Candidate</code> - scored item with Content, Score, Source, Metadata</li>
+    <li><code>CandidateSet</code> - groups candidates with original query</li>
+    <li><code>RelevanceScorer</code> - interface: <code>Score(ctx, query, candidates)</code></li>
+    <li><code>SimpleScorer</code> - keyword overlap scorer (dev/testing only)</li>
+    <li><code>Reranker</code> - combines scorer with selection policy</li>
+    <li><code>SelectionPolicy</code> - TopK and MinScore thresholds</li>
+  </ul>
+<pre><code>reranker := &amp;rerank.Reranker{
+    Scorer: &amp;rerank.SimpleScorer{},
+    Policy: rerank.SelectionPolicy{TopK: 3, MinScore: 0.1},
+}
+results, err := reranker.Rerank(ctx, rerank.CandidateSet{
+    Query: "interfaces", Candidates: candidates,
+})</code></pre>
+</div>
+
+<!-- Layer 7: Validate -->
+<div class="layer-card">
+  <h4>Layer 7 - validate <span class="badge">guardrails</span></h4>
+  <p>
+    Guards final output against hard constraints, rules, and repair paths.
+    Two kinds: deterministic validation and inferential validation.
+  </p>
+  <p>Key types:</p>
+  <ul>
+    <li><code>RuleValidator</code> - runs deterministic rule checks on output</li>
+    <li><code>Rule</code> - named check function</li>
+    <li><code>SemanticValidator</code> - interface for LLM-backed validation</li>
+    <li><code>RepairStrategy</code> - interface for fixing invalid output</li>
+    <li><code>JSONRepairStrategy</code> - wraps constraint.RepairJSON</li>
+    <li><code>RetryPolicy</code> - configurable retry with backoff</li>
+  </ul>
+<pre><code>rv := validate.NewRuleValidator(
+    validate.Rule{Name: "not-empty", Check: func(s string) error {
+        if s == "" { return fmt.Errorf("empty output") }
+        return nil
+    }},
+)
+errs := rv.Validate(output)
+
+rp := &amp;validate.RetryPolicy{MaxRetries: 3, Backoff: time.Second}
+err := rp.Execute(ctx, func() error { return doWork() })</code></pre>
+</div>
+
+<!-- Layer 8: Prompt -->
+<div class="layer-card">
+  <h4>Layer 8 - prompt <span class="badge">feedforward control</span></h4>
+  <p>
+    Shapes model behavior before execution through structured prompt construction.
+    Keeps prompt assembly explicit, testable, and reusable.
+  </p>
+  <p>Key types:</p>
+  <ul>
+    <li><code>SystemPrompt</code> - builds system message from base + instructions + policy</li>
+    <li><code>InstructionSet</code> - named group of rules for system prompt</li>
+    <li><code>Template</code> - prompt with variable placeholders</li>
+    <li><code>ContextPolicy</code> - controls what context is included</li>
+  </ul>
+<pre><code>sp := &amp;prompt.SystemPrompt{
+    Base: "You are a helpful assistant.",
+    Instructions: []prompt.InstructionSet{
+        {Name: "Safety", Rules: []string{"Never reveal secrets", "Be polite"}},
+    },
+}
+msg := sp.Build()
+
+tmpl := &amp;prompt.Template{
+    Raw:       "Translate {{.Text}} to {{.Language}}",
+    Variables: map[string]string{"Text": "hello", "Language": "French"},
+}
+result, err := tmpl.Render()</code></pre>
+</div>
+
+<!-- Layer 9: Memory -->
+<div class="layer-card">
+  <h4>Layer 9 - memory <span class="badge">state management</span></h4>
+  <p>
+    Keeps state outside prompt text. State stays explicit so other layers can
+    inspect, reset, persist, and version it.
+  </p>
+  <p>Key types:</p>
+  <ul>
+    <li><code>ConversationBuffer</code> - message history with optional size limit</li>
+    <li><code>SessionState</code> - thread-safe key-value store across steps</li>
+    <li><code>WorkingMemory</code> - transient per-step context and results</li>
+  </ul>
+<pre><code>buf := memory.NewConversationBuffer(50)  // keep last 50 messages
+buf.Append(core.NewUserMessage("hello"))
+
+state := memory.NewSessionState()
+state.Set("phase", "analysis")
+val, ok := state.Get("phase")</code></pre>
+</div>
+
+<!-- Layer 10: Observe -->
+<div class="layer-card">
+  <h4>Layer 10 - observe <span class="badge">observability</span></h4>
+  <p>
+    Makes system measurable and debuggable. No execution without traceability.
+  </p>
+  <p>Key types:</p>
+  <ul>
+    <li><code>EventLog</code> - interface: Record(Event), Events()</li>
+    <li><code>TraceRecorder</code> - interface: StartSpan returns context + Span</li>
+    <li><code>MetricsCollector</code> - interface: latency, tokens, counters</li>
+    <li><code>CostTracker</code> - interface: usage recording and cost computation</li>
+    <li><code>InMemoryEventLog</code>, <code>InMemoryTracer</code>, <code>InMemoryMetrics</code> - in-memory implementations</li>
+    <li><code>NoopEventLog</code>, <code>NoopTracer</code> - no-op implementations</li>
+  </ul>
+<pre><code>log := &amp;observe.InMemoryEventLog{}
+log.Record(observe.Event{
+    Timestamp: time.Now(), Layer: "tool", Action: "execute",
+    Data: map[string]any{"name": "search"}, Duration: elapsed,
+})
+events := log.Events()</code></pre>
+</div>
+
+<!-- ADAPTERS -->
+<h2 id="adapters">Adapters</h2>
+<p>
+  Adapters are thin boundary layers between external interaction channels and the
+  internal execution core. Each adapter is stateless, deterministic, and replaceable.
+</p>
+
+<table>
+  <tr><th>Adapter</th><th>Purpose</th><th>Key Types</th></tr>
+  <tr>
+    <td><strong>cli</strong></td>
+    <td>Single-shot command-line execution. Read prompt, run inference, write result, exit.</td>
+    <td><code>Runner</code>, <code>RunConfig</code>, <code>ReadPrompt</code></td>
+  </tr>
+  <tr>
+    <td><strong>tui</strong></td>
+    <td>Interactive terminal UI. REPL with commands, streaming chat, ANSI colors.</td>
+    <td><code>AgentREPL</code>, <code>AgentConfig</code>, <code>Command</code></td>
+  </tr>
+  <tr>
+    <td><strong>api</strong></td>
+    <td>Service interface contracts. Request/Response types, validation, streaming, errors.</td>
+    <td><code>ChatRequest</code>, <code>ChatResponse</code>, <code>APIError</code></td>
+  </tr>
+</table>
+
+<h3>CLI Adapter</h3>
+<pre><code>runner := cli.NewRunner(cli.RunConfig{
+    Engine:       engine,
+    SystemPrompt: "You are helpful.",
+    Out:          os.Stdout,
+})
+err := runner.Run(ctx, "What is Go?")</code></pre>
+
+<h3>TUI Adapter</h3>
+<pre><code>repl := tui.NewAgentREPL(tui.AgentConfig{
+    Title:        "my-agent",
+    Banner:       "Welcome! Type /help for commands.",
+    SystemPrompt: "You are helpful.",
+    EngineLoader: func(ctx context.Context) (inference.Engine, func(), error) {
+        krn, cleanup, err := kronk.Load(ctx, kronk.Config{ModelSource: model})
+        return kronk.NewAdapter(krn, nil), cleanup, err
+    },
+})
+repl.Run(ctx)</code></pre>
+
+<!-- ENGINE -->
+<h2 id="engine">Engine (kronk)</h2>
+<p>
+  The <code>kronk</code> package wraps the Ardan Labs kronk SDK for local LLM inference.
+  It handles library installation, model downloading, and engine initialization through
+  a single <code>Load</code> call.
+</p>
+
+<h3>Usage</h3>
+<pre><code>krn, cleanup, err := kronk.Load(ctx, kronk.Config{
+    ModelSource: "unsloth/gemma-4-E4B-it",
+})
+defer cleanup()
+
+engine := kronk.NewAdapter(krn, nil)
+// engine satisfies inference.Engine</code></pre>
+
+<h3>How It Works</h3>
+<ol>
+  <li><code>Load</code> downloads kronk runtime libraries (llama.cpp bindings)</li>
+  <li>Downloads model files from HuggingFace</li>
+  <li>Initializes inference engine with model</li>
+  <li>Returns kronk instance + cleanup function</li>
+</ol>
+
+<p>
+  <code>Adapter</code> implements <code>inference.Engine</code> by converting between
+  pagantic core types and kronk's <code>model.D</code> format. Streaming is handled
+  via channel-based <code>ChatStreaming</code>.
+</p>
+
+<!-- FEATURES -->
+<h2 id="features">Features</h2>
+
+<h3>GBNF Grammar Constraints</h3>
+<p>
+  GBNF (GGML BNF) grammars constrain token generation at the decoder level.
+  Unlike post-hoc validation which checks output after generation, grammar
+  constraints prevent invalid tokens from being generated at all.
+</p>
+<pre><code>// Define grammar
+grammar := constraint.GrammarDefinition{
+    Name:    "sentiment",
+    Grammar: `root ::= "{" ws "\"sentiment\"" ws ":" ws val ws "}"
+ws  ::= [ \t\n]*
+val ::= "\"positive\"" | "\"negative\"" | "\"neutral\""`,
+}
+err := grammar.Validate()  // checks for root rule
+
+// Use in SpecializedLoop
+sl := orchestrate.NewSpecializedLoop(orchestrate.SpecializedConfig{
+    Engine:  engine,
+    Schema:  schema,
+    Grammar: grammar.GrammarString(),
+})</code></pre>
+
+<h3>ExecutionPlan and Step Routing</h3>
+<p>
+  <code>PlanExecutor</code> runs typed steps in sequence. Output of step N feeds input
+  of step N+1. Handlers are pluggable per step type.
+</p>
+<pre><code>plan := orchestrate.ExecutionPlan{
+    Steps: []orchestrate.Step{
+        {Name: "retrieve", Type: orchestrate.StepRetrieve, Input: query},
+        {Name: "rerank",   Type: orchestrate.StepRerank},
+        {Name: "infer",    Type: orchestrate.StepInfer},
+    },
+}
+executor := orchestrate.NewPlanExecutor(map[orchestrate.StepType]orchestrate.StepHandler{
+    orchestrate.StepRetrieve: orchestrate.RetrieveHandler(contextProvider),
+    orchestrate.StepRerank:   rerankHandler,
+    orchestrate.StepInfer:    inferHandler,
+})
+results, err := executor.Execute(ctx, plan)</code></pre>
+
+<h3>Redundant Inference (TMR / N-Version)</h3>
+<p>
+  <code>RedundantLoop</code> runs the same inference N times and applies a voting
+  strategy to pick the best result. Trades latency for reliability.
+</p>
+<pre><code>rl := orchestrate.NewRedundantLoop(orchestrate.RedundantConfig{
+    Engine: engine,
+    Schema: schema,
+    N:      3,                            // 3 candidates
+    Voting: orchestrate.MajorityVoting{}, // pick most frequent
+})
+result, err := rl.Call(ctx, prompt)
+// result.Confidence = 1.0 if all 3 agree
+// result.Candidates has all 3 raw outputs</code></pre>
+
+<h3>Reranking Pipeline</h3>
+<p>
+  Two-stage retrieval: broad recall (retriever) then precise selection (reranker).
+  Standard pattern in production RAG pipelines.
+</p>
+<pre><code>reranker := &amp;rerank.Reranker{
+    Scorer: &amp;rerank.SimpleScorer{},
+    Policy: rerank.SelectionPolicy{TopK: 3, MinScore: 0.1},
+}
+results, err := reranker.Rerank(ctx, rerank.CandidateSet{
+    Query:      "interfaces",
+    Candidates: candidates,
+})</code></pre>
+
+<!-- EXAMPLES -->
+<h2 id="examples">Examples</h2>
+
+<h3>CLI Examples</h3>
+<table>
+  <tr><th>Example</th><th>Description</th><th>Key Concepts</th></tr>
+  <tr>
+    <td><code>cli/simple-query</code></td>
+    <td>Single-shot query, simplest pattern</td>
+    <td>AgentLoop, Engine, CLI adapter</td>
+  </tr>
+  <tr>
+    <td><code>cli/context-query</code></td>
+    <td>Query with context retrieval (RAG)</td>
+    <td>InMemoryRetriever, ContextBuilder, ContextProvider</td>
+  </tr>
+  <tr>
+    <td><code>cli/grammar-query</code></td>
+    <td>GBNF grammar-constrained output</td>
+    <td>GrammarDefinition, DecoderConstraint, SpecializedLoop</td>
+  </tr>
+  <tr>
+    <td><code>cli/rerank-query</code></td>
+    <td>Query with document reranking</td>
+    <td>PlanExecutor, Reranker, StepHandler</td>
+  </tr>
+  <tr>
+    <td><code>cli/redundant-query</code></td>
+    <td>Redundant inference with voting</td>
+    <td>RedundantLoop, MajorityVoting, TMR pattern</td>
+  </tr>
+</table>
+
+<h3>TUI Examples</h3>
+<table>
+  <tr><th>Example</th><th>Description</th><th>Key Concepts</th></tr>
+  <tr>
+    <td><code>tui/simple-chat</code></td>
+    <td>Minimal interactive chat REPL</td>
+    <td>AgentREPL, streaming, ANSI output</td>
+  </tr>
+  <tr>
+    <td><code>tui/tool-use</code></td>
+    <td>Chat with custom Go tool (dice roller)</td>
+    <td>Tool interface, Registry, tool-call loop</td>
+  </tr>
+  <tr>
+    <td><code>tui/structured-output</code></td>
+    <td>Schema-constrained JSON output</td>
+    <td>SpecializedLoop, SchemaValidator, RepairJSON</td>
+  </tr>
+  <tr>
+    <td><code>tui/context-chat</code></td>
+    <td>Chat with per-turn context retrieval</td>
+    <td>ContextProvider, ephemeral context injection</td>
+  </tr>
+</table>
+
+<h3>Running Examples</h3>
+<pre><code># CLI examples (pass prompt as argument or pipe)
+go run examples/cli/simple-query/main.go "What is Go?"
+go run examples/cli/context-query/main.go "What is pagantic?"
+go run examples/cli/grammar-query/main.go "I love this!"
+go run examples/cli/rerank-query/main.go "How do interfaces work?"
+go run examples/cli/redundant-query/main.go "Great product!"
+
+# Or use Task runner
+task run-simple-query -- "What is Go?"
+task run-grammar-query -- "I love this!"
+task run-rerank-query -- "How do interfaces work?"
+task run-redundant-query -- "Great product!"
+
+# TUI examples (interactive)
+task run-simple-chat
+task run-tool-use
+task run-structured-output
+task run-context-chat</code></pre>
+
+<!-- GETTING STARTED -->
+<h2 id="getting-started">Getting Started</h2>
+
+<h3>Prerequisites</h3>
+<ul>
+  <li>Go 1.26+</li>
+  <li>C compiler (for kronk/llama.cpp bindings)</li>
+  <li>Internet connection (first run downloads model files)</li>
+  <li><a href="https://taskfile.dev/">Task</a> runner (optional, for convenience commands)</li>
+</ul>
+
+<h3>Installation</h3>
+<pre><code>git clone https://github.com/miroslav-matejovsky/pagantic.git
+cd pagantic
+go mod tidy</code></pre>
+
+<h3>First Query</h3>
+<pre><code>go run examples/cli/simple-query/main.go "What is the capital of France?"</code></pre>
+<p>
+  First run downloads kronk libraries and model files (may take several minutes).
+  Subsequent runs use cached files.
+</p>
+
+<h3>Development</h3>
+<pre><code># Run all checks (vet, lint, arch-lint, tests)
+task fast
+
+# Run specific checks
+task vet
+task lint
+task arch-lint
+task test
+
+# Install Go tools
+task go-tools</code></pre>
+
+<!-- DESIGN -->
+<h2 id="design">Design Principles</h2>
+
+<h3>Deterministic Control Around Probabilistic Inference</h3>
+<p>
+  The model is probabilistic - it generates tokens stochastically. Everything else
+  is deterministic: tool execution, validation, context retrieval, output repair,
+  reranking, and voting. The harness mediates between deterministic control and
+  probabilistic generation.
+</p>
+
+<h3>Structural Typing for Cross-Layer Integration</h3>
+<p>
+  Layers communicate through interfaces defined by the consumer, not the provider.
+  <code>orchestrate.ContextProvider</code> is satisfied by <code>context.ContextBuilder</code>
+  without import. Same pattern for <code>CandidateReranker</code>. This keeps the
+  dependency graph clean and allows independent evolution.
+</p>
+
+<h3>Explicit State</h3>
+<p>
+  All state is explicit and inspectable. ConversationBuffer holds message history.
+  SessionState holds key-value data. WorkingMemory holds transient step results.
+  No hidden state in closures or globals.
+</p>
+
+<h3>No Magic</h3>
+<p>
+  Every inference call goes through the harness. Every tool call is logged. Every
+  output is validated. The system is transparent, debuggable, and predictable.
+</p>
+
+<h3>Layers Enforce Boundaries</h3>
+<p>
+  Numeric prefixes on layer directories enforce dependency direction. The arch-lint
+  tool checks at CI time. No runtime surprises from circular imports.
+</p>
+
+</div>
+
+<footer>
+  pagantic - Probabilistic Agentic Control System
+</footer>
+
+</body>
+</html>

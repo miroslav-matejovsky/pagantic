@@ -15,8 +15,9 @@
 //     harness wraps probabilistic output with deterministic retrieval and
 //     control flow.
 //
-//   - Adapter (cli): Thin boundary. Reads prompt, delegates to orchestrate
-//     layer, writes output. No business logic.
+//   - Adapter (cli): Runner adds a mandatory timeout (DefaultTimeout) so the
+//     inference engine always receives a context with a deadline. ContextProvider
+//     is wired through RunConfig - no deadline risk even for RAG examples.
 //
 // This pattern is Retrieval-Augmented Generation (RAG) at its simplest:
 // deterministic retrieval constrains what the probabilistic model can know.
@@ -30,7 +31,6 @@ import (
 
 	"github.com/miroslav-matejovsky/pagantic/adapters/cli"
 	"github.com/miroslav-matejovsky/pagantic/kronk"
-	orchestrate "github.com/miroslav-matejovsky/pagantic/layers/02_orchestrate"
 	pctx "github.com/miroslav-matejovsky/pagantic/layers/03_context"
 )
 
@@ -88,25 +88,24 @@ func main() {
 		MaxChunks: 3,
 	}
 
-	// Wire context into the agent loop. The ContextProvider retrieves
-	// relevant documents before each inference call, giving the model
-	// bounded domain knowledge instead of relying on training data alone.
-	loop := orchestrate.NewAgentLoop(orchestrate.LoopConfig{
+	// Runner adds a mandatory timeout (DefaultTimeout = 120s) to ctx before
+	// calling the inference engine. Wiring ContextProvider through RunConfig
+	// keeps the example thin and guarantees the deadline is always set.
+	runner := cli.NewRunner(cli.RunConfig{
 		Engine:          engine,
 		SystemPrompt:    "You are a helpful assistant. Answer questions using only the provided context. If the context does not contain relevant information, say so.",
 		ContextProvider: contextProvider,
+		Out:             os.Stdout,
 	})
 
-	result, err := loop.Chat(ctx, prompt)
-	if err != nil {
+	if err := runner.Run(ctx, prompt); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
-
-	fmt.Println(result.Content)
 }
 
 // Usage:
-//   go run examples/cli/context-query/main.go "What is pagantic?"
-//   go run examples/cli/context-query/main.go "How does the context layer work?"
-//   echo "What does the tool layer do?" | go run examples/cli/context-query/main.go
+//
+//	go run examples/cli/context-query/main.go "What is pagantic?"
+//	go run examples/cli/context-query/main.go "How does the context layer work?"
+//	echo "What does the tool layer do?" | go run examples/cli/context-query/main.go

@@ -59,6 +59,9 @@ func (a *Adapter) Infer(ctx context.Context, req inference.Request) (*inference.
 	if len(req.Tools) > 0 {
 		requestD["tools"] = toolDefsToD(req.Tools)
 	}
+	if req.Grammar != "" {
+		requestD["grammar"] = req.Grammar
+	}
 	if req.Schema != nil {
 		requestD["json_schema"] = schemaToD(*req.Schema)
 		if _, exists := requestD["enable_thinking"]; !exists {
