@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Constraints &amp; Validation - pagantic</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<nav>
+  <a href="index.html" class="logo">pagantic</a>
+  <a href="architecture.html">Architecture</a>
+  <a href="orchestration.html">Orchestration</a>
+  <a href="retrieval.html">Retrieval</a>
+  <a href="tools.html">Tools</a>
+  <a href="constraints.html">Constraints</a>
+  <a href="https://github.com/miroslav-matejovsky/pagantic" target="_blank" style="margin-left: auto;">GitHub</a>
+</nav>
+
+<div class="container">
+
+  <div class="breadcrumb">
+    <a href="index.html">Home</a> &rsaquo; Constraints &amp; Validation
+  </div>
+
+  <div class="page-header">
+    <h1>Constraints &amp; Validation</h1>
+    <p>Controlling LLM output through decoder-level enforcement and post-hoc validation</p>
+  </div>
+
+  <div class="toc">
+    <h4>Table of Contents</h4>
+    <ul>
+      <li><a href="#philosophy">1. The Constraint Philosophy</a></li>
+      <li><a href="#gbnf-grammar">2. GBNF Grammar Constraints (Layer 5)</a></li>
+      <li><a href="#schema-validation">3. JSON Schema Validation (Layer 5)</a></li>
+      <li><a href="#json-repair">4. JSON Repair (Layer 5)</a></li>
+      <li><a href="#enum-normalization">5. Enum Normalization (Layer 5)</a></li>
+      <li><a href="#json-validator">6. JSON Validator (Layer 5)</a></li>
+      <li><a href="#rule-validation">7. Rule Validation (Layer 7)</a></li>
+      <li><a href="#semantic-validation">8. Semantic Validation (Layer 7)</a></li>
+      <li><a href="#repair-strategy">9. Repair Strategy (Layer 7)</a></li>
+      <li><a href="#retry-policy">10. Retry Policy (Layer 7)</a></li>
+      <li><a href="#composing">11. Composing Constraints</a></li>
+      <li><a href="#when-to-use">12. When to Use What</a></li>
+    </ul>
+  </div>
+
+  <!-- ====================================================== -->
+  <h2 id="philosophy">1. The Constraint Philosophy</h2>
+
+  <p>LLM output is probabilistic. Left unconstrained, models produce whatever tokens maximize their probability distribution. Two fundamentally different approaches exist for controlling this:</p>
+
+  <ul>
+    <li><strong>Decoder-level constraints (before generation):</strong> GBNF grammar prevents invalid tokens from being generated. The model can only produce tokens that match the grammar rules. Invalid output is <em>impossible</em>.</li>
+    <li><strong>Post-hoc validation (after generation):</strong> Check output after the model generates it. Repair or reject if invalid. Invalid output is <em>detected and handled</em>.</li>
+  </ul>
+
+  <p>pagantic supports both, and they compose. Grammar constrains generation, then schema validates structure, then repair fixes edge cases, then rules check semantics:</p>
+
+  <div class="arch-diagram">Prompt -> [GBNF Grammar] -> Model generates -> [JSON Repair] -> [Schema Validation] -> [Rule Validation] -> Output
+          decoder-level       tokens             post-hoc          post-hoc              post-hoc</div>
+
+  <div class="info">
+    <strong>Info:</strong> ChatStructured automatically applies repair and validation. You only need manual constraint composition for custom pipelines.
+  </div>
+
+  <p>The constraint layer (Layer 5) handles deterministic enforcement at the system boundary. The validate layer (Layer 7) guards final output with rules, semantic checks, and retry loops. Together they form a defense-in-depth strategy for output correctness.</p>
+
+  <!-- ====================================================== -->
+  <h2 id="gbnf-grammar">2. GBNF Grammar Constraints (Layer 5 - constraint)</h2>
+
+  <h3>What is GBNF?</h3>
+
+  <p>GBNF (GGML BNF) is the grammar format used by llama.cpp. When passed to the inference engine, the decoder is constrained to only produce tokens matching the grammar rules. This is fundamentally different from post-hoc validation - invalid output is <em>prevented</em>, not detected.</p>
+
+  <div class="note">
+    <strong>Note:</strong> GBNF grammar is specific to llama.cpp. Other inference engines may use different grammar formats.
+  </div>
+
+  <h3>GrammarDefinition</h3>
+
+  <p>Holds a GBNF grammar for decoder-level output constraints:</p>
+
+<pre><code>type GrammarDefinition struct {
+    // Name identifies this grammar for logging and debugging.
+    Name    string
+    // Grammar is the GBNF grammar string. Must contain a root rule.
+    Grammar string
+}
+
+// GrammarString returns the raw GBNF text for decoder enforcement.
+func (g GrammarDefinition) GrammarString() string
+
+// Validate checks grammar for basic structural issues.
+// Returns error if grammar is empty or missing root rule.
+func (g GrammarDefinition) Validate() error</code></pre>
+
+  <h3>Example grammars</h3>
+
+  <p>Simple yes/no constraint - model can only output one of two words:</p>
+
+<pre><code>root ::= "yes" | "no"</code></pre>
+
+  <p>Sentiment JSON - structured output with enum values:</p>
+
+<pre><code>root ::= "{" ws "\"sentiment\"" ws ":" ws val ws "}"
+ws   ::= [ \t\n]*
+val  ::= "\"positive\"" | "\"negative\"" | "\"neutral\""</code></pre>
+
+  <p>Multi-field JSON - name and age object:</p>
+
+<pre><code>root   ::= "{" ws "\"name\"" ws ":" ws string ws "," ws "\"age\"" ws ":" ws number ws "}"
+ws     ::= [ \t\n]*
+string ::= "\"" [a-zA-Z ]+ "\""
+number ::= [0-9]+</code></pre>
+
+  <div class="tip">
+    <strong>Tip:</strong> Grammar constraints are most effective for classification and simple structured output. Complex nested schemas may be easier to enforce with post-hoc validation.
+  </div>
+
+  <h3>Grammar validation</h3>
+
+<pre><code>grammar := constraint.GrammarDefinition{
+    Name:    "sentiment",
+    Grammar: `root ::= "positive" | "negative" | "neutral"`,
+}
+
+err := grammar.Validate()
+// Checks:
+// 1. Grammar is not empty
+// 2. Grammar has a root rule (exact "root" LHS, not just prefix)</code></pre>
+
+  <p>Internally, <code>hasRootRule</code> parses each line, extracts the left-hand side of <code>::=</code>, and requires an exact match to <code>"root"</code>. This prevents false positives like <code>rootRule ::= ...</code> from passing validation.</p>
+
+  <p>The standalone <code>ValidateGrammar</code> function provides the same checks without needing a <code>GrammarDefinition</code> struct:</p>
+
+<pre><code>err := constraint.ValidateGrammar(`root ::= "yes" | "no"`)
+// nil - valid grammar
+
+err = constraint.ValidateGrammar(`answer ::= "yes" | "no"`)
+// error: constraint: grammar missing root rule (must contain 'root ::=')</code></pre>
+
+  <h3>DecoderConstraint interface</h3>
+
+  <p>Represents a constraint enforceable at the decoder level. Implementations return a grammar string that the inference engine uses to restrict token generation:</p>
+
+<pre><code>type DecoderConstraint interface {
+    // GrammarString returns GBNF grammar for decoder enforcement.
+    GrammarString() string
+}
+
+// GrammarConstraint wraps GrammarDefinition as a DecoderConstraint.
+type GrammarConstraint struct {
+    Definition GrammarDefinition
+}
+
+func (gc GrammarConstraint) GrammarString() string {
+    return gc.Definition.GrammarString()
+}</code></pre>
+
+  <h3>Using with SpecializedLoop</h3>
+
+<pre><code>grammar := constraint.GrammarDefinition{
+    Name:    "sentiment",
+    Grammar: `root ::= "{" ws "\"sentiment\"" ws ":" ws val ws "}"
+ws  ::= [ \t\n]*
+val ::= "\"positive\"" | "\"negative\"" | "\"neutral\""`,
+}
+
+if err := grammar.Validate(); err != nil {
+    log.Fatal(err)
+}
+
+sl := orchestrate.NewSpecializedLoop(orchestrate.SpecializedConfig{
+    Engine:  engine,
+    Schema:  schema,
+    Grammar: grammar.GrammarString(),  // passed to decoder
+})</code></pre>
+
+  <h3>How grammar flows through the system</h3>
+
+  <div class="arch-diagram">SpecializedConfig.Grammar
+  -> LoopConfig.Grammar
+    -> inference.Request.Grammar
+      -> kronk adapter: requestD["grammar"] = req.Grammar
+        -> llama.cpp GBNF enforcement</div>
+
+  <!-- ====================================================== -->
+  <h2 id="schema-validation">3. JSON Schema Validation (Layer 5 - constraint)</h2>
+
+  <p><code>SchemaValidator</code> validates JSON output against <code>core.Schema</code> definitions. It checks structure, types, required fields, and enum membership:</p>
+
+<pre><code>sv := constraint.NewSchemaValidator(core.Schema{
+    Type: "object",
+    Properties: map[string]core.Schema{
+        "sentiment":  {Type: "string", Enum: []string{"positive", "negative", "neutral"}},
+        "confidence": {Type: "number"},
+    },
+    Required: []string{"sentiment", "confidence"},
+})
+
+result := sv.Validate(`{"sentiment":"positive","confidence":0.95}`)
+// result.Valid == true
+// result.Errors == nil
+
+result = sv.Validate(`{"sentiment":"maybe"}`)
+// result.Valid == false
+// result.Errors contains: missing required field "confidence",
+//                         field "sentiment": must be one of [positive negative neutral]</code></pre>
+
+  <h3>What SchemaValidator checks</h3>
+
+  <ul>
+    <li><strong>Required fields present</strong> - all fields listed in <code>Required</code> must exist in the object</li>
+    <li><strong>Type correctness</strong> - <code>string</code>, <code>number</code>, <code>integer</code>, <code>boolean</code>, <code>object</code>, <code>array</code></li>
+    <li><strong>Enum value membership</strong> - string values must match one of the allowed enum values (case-sensitive)</li>
+    <li><strong>Nested object validation</strong> - properties with object schemas are validated recursively</li>
+    <li><strong>Array item validation</strong> - when <code>Items</code> schema is defined, each array element is validated against it</li>
+  </ul>
+
+  <h3>ValidationResult</h3>
+
+<pre><code>type ValidationResult struct {
+    Valid  bool      // true when output passes all checks
+    Errors []string  // list of validation failures
+    Output string    // original or repaired output
+}</code></pre>
+
+  <p>Empty schemas (no type, properties, required, enum, or items) always pass validation. This lets you use <code>SchemaValidator</code> in pipelines where schema is optional.</p>
+
+  <!-- ====================================================== -->
+  <h2 id="json-repair">4. JSON Repair (Layer 5 - constraint)</h2>
+
+  <p>Models sometimes produce truncated or malformed JSON, especially when hitting token limits. <code>RepairJSON</code> fixes common issues:</p>
+
+<pre><code>// Truncated JSON (missing closing braces)
+repaired := constraint.RepairJSON(`{"name": "Alice", "age": 30`)
+// Result: `{"name": "Alice", "age": 30}`
+
+// Missing closing bracket
+repaired = constraint.RepairJSON(`[1, 2, 3`)
+// Result: `[1, 2, 3]`
+
+// Unclosed string
+repaired = constraint.RepairJSON(`{"name": "Alice`)
+// Result: `{"name": "Alice"}`</code></pre>
+
+  <h3>RepairJSON strategy</h3>
+
+  <p>The repair algorithm walks the string character by character:</p>
+
+  <ol>
+    <li>Trim trailing whitespace</li>
+    <li>Track string context (inside/outside quotes, escape sequences)</li>
+    <li>Push expected closing delimiters onto a stack when opening <code>{</code> or <code>[</code></li>
+    <li>Pop from stack when closing <code>}</code> or <code>]</code> is encountered</li>
+    <li>After scanning, close any unclosed string with <code>"</code></li>
+    <li>Append remaining closing delimiters from the stack in reverse order</li>
+  </ol>
+
+  <div class="note">
+    <strong>Note:</strong> RepairJSON is not a general JSON repair tool. It handles truncation only. Use <code>json.Valid</code> after repair to confirm the result is valid JSON.
+  </div>
+
+  <!-- ====================================================== -->
+  <h2 id="enum-normalization">5. Enum Normalization (Layer 5 - constraint)</h2>
+
+  <p>Models sometimes produce enum values with wrong casing. <code>NormalizeEnumValues</code> rewrites them to the canonical casing defined in the schema:</p>
+
+<pre><code>schema := core.Schema{
+    Type: "object",
+    Properties: map[string]core.Schema{
+        "sentiment": {Type: "string", Enum: []string{"positive", "negative", "neutral"}},
+    },
+}
+
+normalized := constraint.NormalizeEnumValues(
+    `{"sentiment":"Positive"}`,  // model output "Positive"
+    schema,
+)
+// Result: `{"sentiment":"positive"}`  // normalized to canonical "positive"</code></pre>
+
+  <h3>How normalization works</h3>
+
+  <ul>
+    <li>Parses JSON with <code>json.Decoder</code> using <code>UseNumber()</code> to preserve numeric precision</li>
+    <li>Walks the parsed structure recursively, matching property names to schema definitions</li>
+    <li>For string enum fields, performs case-insensitive matching via <code>strings.EqualFold</code></li>
+    <li>Only rewrites when exactly one enum value matches case-insensitively (ambiguous matches are left unchanged)</li>
+    <li>Rejects input with trailing non-whitespace content after the JSON value</li>
+    <li>Returns the original string unchanged on any parse error</li>
+  </ul>
+
+  <div class="tip">
+    <strong>Tip:</strong> Enum normalization is safe to run on any JSON output. It is a no-op when no enum fields are defined or when values already match canonical casing.
+  </div>
+
+  <!-- ====================================================== -->
+  <h2 id="json-validator">6. JSON Validator (Layer 5 - constraint)</h2>
+
+  <p><code>JSONValidator</code> combines JSON validity checking with optional repair. It implements the <code>OutputValidator</code> interface:</p>
+
+<pre><code>type OutputValidator interface {
+    Validate(output string) ValidationResult
+}
+
+type JSONValidator struct {
+    AttemptRepair bool  // when true, tries RepairJSON before failing
+}
+
+jv := constraint.NewJSONValidator(true)  // enable repair
+
+result := jv.Validate(`{"name": "Alice"`)
+// AttemptRepair is true, so:
+// 1. Detects invalid JSON
+// 2. Runs RepairJSON -> `{"name": "Alice"}`
+// 3. Validates repaired output
+// result.Valid == true
+// result.Output == `{"name": "Alice"}`</code></pre>
+
+  <p>When <code>AttemptRepair</code> is false, invalid JSON immediately returns a validation failure without attempting repair.</p>
+
+  <!-- ====================================================== -->
+  <h2 id="rule-validation">7. Rule Validation (Layer 7 - validate)</h2>
+
+  <p>Deterministic rule checks on final output. Each rule is a named function that returns an error on failure:</p>
+
+<pre><code>rv := validate.NewRuleValidator(
+    validate.Rule{
+        Name: "not-empty",
+        Check: func(s string) error {
+            if strings.TrimSpace(s) == "" {
+                return fmt.Errorf("output is empty")
+            }
+            return nil
+        },
+    },
+    validate.Rule{
+        Name: "max-length",
+        Check: func(s string) error {
+            if len(s) > 10000 {
+                return fmt.Errorf("output exceeds 10000 characters")
+            }
+            return nil
+        },
+    },
+    validate.Rule{
+        Name: "valid-json",
+        Check: func(s string) error {
+            if !json.Valid([]byte(s)) {
+                return fmt.Errorf("output is not valid JSON")
+            }
+            return nil
+        },
+    },
+)
+
+errors := rv.Validate(output)
+// errors is []error, one per failed rule
+// nil rules (Check == nil) are skipped</code></pre>
+
+  <h3>Rule design</h3>
+
+  <ul>
+    <li>Rules run sequentially - all rules execute even if earlier ones fail</li>
+    <li>Each rule is independent - no shared state between rules</li>
+    <li>Return <code>nil</code> for pass, non-nil <code>error</code> for fail</li>
+    <li>A nil <code>RuleValidator</code> returns no errors (safe to call on zero value)</li>
+    <li>Rules are copied on creation - modifying the original slice after <code>NewRuleValidator</code> has no effect</li>
+  </ul>
+
+  <div class="info">
+    <strong>Info:</strong> Rule validation lives in Layer 7 (validate), not Layer 5 (constraint). Layer 5 handles structural enforcement (grammar, schema, repair). Layer 7 handles application-level checks on final output.
+  </div>
+
+  <!-- ====================================================== -->
+  <h2 id="semantic-validation">8. Semantic Validation (Layer 7 - validate)</h2>
+
+  <p>LLM-backed validation for content quality. Use when deterministic rules are not enough - checking factual consistency with context, tone matching, or hallucination detection:</p>
+
+<pre><code>type SemanticValidator interface {
+    // Validate says if output fits intent.
+    Validate(ctx context.Context, output string, intent string) (valid bool, reason string, err error)
+}</code></pre>
+
+  <p>The interface takes three parameters:</p>
+
+  <ul>
+    <li><code>ctx</code> - context for cancellation and timeouts</li>
+    <li><code>output</code> - the model output to validate</li>
+    <li><code>intent</code> - what the output should accomplish (used by the LLM to judge quality)</li>
+  </ul>
+
+  <p>Returns <code>valid</code> (pass/fail), <code>reason</code> (human-readable explanation), and <code>err</code> (infrastructure error).</p>
+
+  <div class="note">
+    <strong>Note:</strong> SemanticValidator is currently interface-only. Implementation requires orchestration layer for LLM calls. See the <code>TODO</code> in the validate package.
+  </div>
+
+  <!-- ====================================================== -->
+  <h2 id="repair-strategy">9. Repair Strategy (Layer 7 - validate)</h2>
+
+  <p>When output fails validation, a <code>RepairStrategy</code> attempts to fix it before retrying:</p>
+
+<pre><code>type RepairStrategy interface {
+    // Repair returns fixed output or error.
+    Repair(ctx context.Context, output string, errors []string) (string, error)
+}</code></pre>
+
+  <p>The interface receives context, the broken output, and the list of validation errors that triggered repair. This allows strategies to target specific failure modes.</p>
+
+  <h3>Built-in: JSONRepairStrategy</h3>
+
+<pre><code>strategy := &amp;validate.JSONRepairStrategy{}
+repaired, err := strategy.Repair(ctx, brokenJSON, validationErrors)
+// Wraps constraint.RepairJSON
+// Returns error if repaired output is still not valid JSON</code></pre>
+
+  <div class="tip">
+    <strong>Tip:</strong> Custom repair strategies can use the <code>errors</code> parameter to decide which repair approach to try. For example, a strategy might handle "missing required field" differently from "invalid type".
+  </div>
+
+  <!-- ====================================================== -->
+  <h2 id="retry-policy">10. Retry Policy (Layer 7 - validate)</h2>
+
+  <p>When validation fails and repair cannot fix the output, retry the entire inference:</p>
+
+<pre><code>rp := &amp;validate.RetryPolicy{
+    MaxRetries: 3,             // extra tries after first attempt
+    Backoff:    time.Second,   // wait time between retries
+}
+
+err := rp.Execute(ctx, func() error {
+    result, err := engine.Infer(ctx, req)
+    if err != nil {
+        return err  // retried
+    }
+    if !isValid(result) {
+        return fmt.Errorf("invalid output")  // retried
+    }
+    return nil  // success, stops retrying
+})</code></pre>
+
+  <h3>Retry behavior</h3>
+
+  <ul>
+    <li>Runs the function up to <code>MaxRetries + 1</code> times (1 initial + N retries)</li>
+    <li>Waits <code>Backoff</code> duration between each retry</li>
+    <li>Respects context cancellation - checks <code>ctx.Err()</code> before each attempt and during backoff waits</li>
+    <li>Returns the last error if all attempts fail</li>
+    <li>Returns <code>nil</code> immediately on first success</li>
+    <li>A nil <code>RetryPolicy</code> executes the function exactly once (safe zero value)</li>
+  </ul>
+
+  <div class="info">
+    <strong>Info:</strong> RetryPolicy uses a fixed backoff duration. For exponential backoff or jitter, implement a custom retry wrapper around <code>Execute</code>.
+  </div>
+
+  <!-- ====================================================== -->
+  <h2 id="composing">11. Composing Constraints</h2>
+
+  <p>All constraints compose in a layered pipeline. Here is a complete example showing grammar, schema, repair, and validation working together:</p>
+
+<pre><code>// 1. Define GBNF grammar (decoder-level)
+grammar := constraint.GrammarDefinition{
+    Name: "analysis",
+    Grammar: `root ::= "{" ws items ws "}"
+ws ::= [ \t\n]*
+items ::= item ("," ws item)*
+item ::= "\"" key "\"" ws ":" ws value
+key ::= [a-z_]+
+value ::= "\"" [a-zA-Z ]+ "\"" | [0-9]+`,
+}
+
+// 2. Define JSON schema (post-hoc validation)
+schema := core.Schema{
+    Type: "object",
+    Properties: map[string]core.Schema{
+        "sentiment":  {Type: "string", Enum: []string{"positive", "negative", "neutral"}},
+        "confidence": {Type: "number"},
+    },
+    Required: []string{"sentiment", "confidence"},
+}
+
+// 3. Use SpecializedLoop (handles grammar + schema + repair + validation)
+sl := orchestrate.NewSpecializedLoop(orchestrate.SpecializedConfig{
+    Engine:  engine,
+    Schema:  schema,
+    Grammar: grammar.GrammarString(),
+})
+
+result, err := sl.Call(ctx, "Analyze: Great product!")
+// Constraint pipeline:
+// 1. GBNF grammar constrains token generation -> valid JSON structure
+// 2. JSON repair fixes any truncation -> complete JSON
+// 3. Enum normalization -> canonical casing
+// 4. Schema validation -> structural correctness</code></pre>
+
+  <h3>Manual constraint composition</h3>
+
+  <p>For custom pipelines outside SpecializedLoop, compose constraints explicitly:</p>
+
+<pre><code>// Step 1: Get model output (with grammar if available)
+output := runInference(ctx, prompt, grammar.GrammarString())
+
+// Step 2: Repair truncated JSON
+jv := constraint.NewJSONValidator(true)  // attempt repair
+result := jv.Validate(output)
+if !result.Valid {
+    return fmt.Errorf("JSON repair failed: %v", result.Errors)
+}
+output = result.Output
+
+// Step 3: Normalize enum casing
+output = constraint.NormalizeEnumValues(output, schema)
+
+// Step 4: Validate against schema
+sv := constraint.NewSchemaValidator(schema)
+schemaResult := sv.Validate(output)
+if !schemaResult.Valid {
+    return fmt.Errorf("schema validation failed: %v", schemaResult.Errors)
+}
+
+// Step 5: Run business rules
+rv := validate.NewRuleValidator(customRules...)
+if errs := rv.Validate(output); len(errs) > 0 {
+    return fmt.Errorf("rule validation failed: %v", errs)
+}</code></pre>
+
+  <!-- ====================================================== -->
+  <h2 id="when-to-use">12. When to Use What</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Constraint</th>
+        <th>When to use</th>
+        <th>Layer</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>GBNF Grammar</td>
+        <td>Strict output format, decoder enforcement</td>
+        <td><span class="badge">5 - constraint</span></td>
+      </tr>
+      <tr>
+        <td>Schema Validation</td>
+        <td>JSON structure and type checking</td>
+        <td><span class="badge">5 - constraint</span></td>
+      </tr>
+      <tr>
+        <td>JSON Repair</td>
+        <td>Truncated model output</td>
+        <td><span class="badge">5 - constraint</span></td>
+      </tr>
+      <tr>
+        <td>Enum Normalization</td>
+        <td>Inconsistent casing from model</td>
+        <td><span class="badge">5 - constraint</span></td>
+      </tr>
+      <tr>
+        <td>JSON Validator</td>
+        <td>Combined validity check with optional repair</td>
+        <td><span class="badge">5 - constraint</span></td>
+      </tr>
+      <tr>
+        <td>Rule Validation</td>
+        <td>Custom deterministic checks on final output</td>
+        <td><span class="badge">7 - validate</span></td>
+      </tr>
+      <tr>
+        <td>Semantic Validation</td>
+        <td>Content quality, factual consistency, hallucination</td>
+        <td><span class="badge">7 - validate</span></td>
+      </tr>
+      <tr>
+        <td>Repair Strategy</td>
+        <td>Fixing output that failed validation</td>
+        <td><span class="badge">7 - validate</span></td>
+      </tr>
+      <tr>
+        <td>Retry Policy</td>
+        <td>Transient failures, invalid output after repair</td>
+        <td><span class="badge">7 - validate</span></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="tip">
+    <strong>Tip:</strong> Start with grammar constraints for classification tasks. Add schema validation for structured JSON output. Layer on rule validation for business-specific checks. Reserve semantic validation for cases where deterministic rules cannot capture the requirement.
+  </div>
+
+  <div class="note">
+    <strong>Note:</strong> Decoder-level constraints (grammar) and post-hoc constraints (schema, rules) are complementary, not competing. Grammar prevents structurally invalid output. Schema and rules catch semantic issues that grammar cannot express.
+  </div>
+
+</div>
+
+<footer>pagantic - Probabilistic Agentic Control System</footer>
+
+</body>
+</html>

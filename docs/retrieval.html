@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Retrieval &amp; Reranking - pagantic</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<nav>
+  <a href="index.html" class="logo">pagantic</a>
+  <a href="architecture.html">Architecture</a>
+  <a href="orchestration.html">Orchestration</a>
+  <a href="retrieval.html">Retrieval</a>
+  <a href="tools.html">Tools</a>
+  <a href="constraints.html">Constraints</a>
+  <a href="https://github.com/miroslav-matejovsky/pagantic" target="_blank" style="margin-left: auto;">GitHub</a>
+</nav>
+
+<div class="container">
+
+  <div class="breadcrumb">
+    <a href="index.html">Home</a> &rsaquo; Retrieval &amp; Reranking
+  </div>
+
+  <div class="page-header">
+    <h1>Retrieval &amp; Reranking</h1>
+    <p>Context retrieval, reranking, and the full RAG pipeline in pagantic.</p>
+  </div>
+
+  <div class="toc">
+    <h4>Table of Contents</h4>
+    <ul>
+      <li><a href="#rag-pattern">1. The RAG Pattern in pagantic</a></li>
+      <li><a href="#context-layer">2. Context Layer (Layer 3)</a></li>
+      <li><a href="#structural-typing">3. Structural Typing: ContextProvider</a></li>
+      <li><a href="#ephemeral-context">4. Ephemeral Context Injection</a></li>
+      <li><a href="#rerank-layer">5. Rerank Layer (Layer 6)</a></li>
+      <li><a href="#candidate-reranker">6. CandidateReranker - Cross-Layer Integration</a></li>
+      <li><a href="#full-pipeline">7. Full RAG Pipeline with PlanExecutor</a></li>
+      <li><a href="#custom-retriever">8. Custom Retriever Implementation</a></li>
+    </ul>
+  </div>
+
+  <!-- ============================================================ -->
+  <h2 id="rag-pattern">1. The RAG Pattern in pagantic</h2>
+
+  <p>
+    Retrieval-Augmented Generation (RAG) gives the model relevant knowledge
+    <em>before</em> generation. Instead of relying on whatever the model
+    memorized during training, pagantic retrieves bounded, deterministic
+    context for every query and injects it into the prompt.
+  </p>
+
+  <p>Three invariants govern how pagantic handles knowledge:</p>
+  <ul>
+    <li><strong>Model never acts on unconstrained knowledge.</strong>
+      Every piece of context the model sees was explicitly retrieved and scored.</li>
+    <li><strong>Context is bounded and deterministic.</strong>
+      Chunk counts are capped, scores are thresholded, and sources are tracked.</li>
+    <li><strong>Retrieved per query, not accumulated.</strong>
+      Each turn gets fresh context. Previous context does not leak into future turns.</li>
+  </ul>
+
+  <div class="info">
+    <strong>Why not just stuff everything into the prompt?</strong>
+    Token limits, noise, and cost. Retrieval narrows the knowledge surface
+    to what matters for <em>this specific query</em>, keeping the prompt
+    focused and the model grounded.
+  </div>
+
+  <div class="arch-diagram">Layer 3 (Context)          Layer 6 (Rerank)
++-----------------+        +------------------+
+| Retriever       |------->| RelevanceScorer  |
+| ContextBuilder  |        | SelectionPolicy  |
+| InMemoryRetriever|       | Reranker         |
++-----------------+        +------------------+
+        |                          |
+        v                          v
+   []core.Message            []Candidate
+        \                        /
+         \                      /
+          v                    v
+    Layer 2 (Orchestrate)
+    +------------------------+
+    | ContextProvider        |
+    | CandidateReranker      |
+    | PlanExecutor           |
+    +------------------------+</div>
+
+  <!-- ============================================================ -->
+  <h2 id="context-layer">2. Context Layer (Layer 3)</h2>
+
+  <p>
+    Layer 3 gives the model relevant, bounded knowledge. Input is user query.
+    Output is structured context block injected into the message list.
+  </p>
+
+  <h3>Retriever Interface</h3>
+
+  <p>
+    <code>Retriever</code> is the core abstraction. Implement it to connect
+    any knowledge source - vector database, search engine, file system,
+    or API.
+  </p>
+
+<pre><code><span class="comment">// Retriever finds relevant content for query.</span>
+type Retriever interface {
+    Retrieve(ctx context.Context, query string, limit int) ([]Chunk, error)
+}
+
+<span class="comment">// Chunk is piece of retrieved content with relevance metadata.</span>
+type Chunk struct {
+    Content  string
+    Source   string
+    Score    float64
+    Metadata map[string]any
+}</code></pre>
+
+  <p>
+    Each <code>Chunk</code> carries its content, a source identifier for
+    traceability, a relevance score, and arbitrary metadata. The score
+    field lets downstream components (like the rerank layer) compare and
+    filter chunks.
+  </p>
+
+  <h3>InMemoryRetriever - Built-in Keyword Matcher</h3>
+
+  <p>
+    pagantic ships with <code>InMemoryRetriever</code>, a simple keyword-matching
+    retriever that operates on in-memory documents. Good for bounded domains
+    with known document sets, tests, and prototyping.
+  </p>
+
+<pre><code><span class="comment">// Document is stored document for in-memory retriever.</span>
+type Document struct {
+    Content  string
+    Source   string
+    Metadata map[string]any
+}
+
+<span class="comment">// InMemoryRetriever does keyword matching against in-memory documents.</span>
+<span class="comment">// Good for bounded domains with known document sets.</span>
+retriever := pctx.NewInMemoryRetriever(
+    pctx.Document{Content: "Go interfaces are satisfied implicitly.", Source: "go-spec"},
+    pctx.Document{Content: "Goroutines are lightweight threads.", Source: "go-concurrency"},
+    pctx.Document{Content: "Channels are typed conduits for communication.", Source: "go-channels"},
+)</code></pre>
+
+  <div class="note">
+    <strong>InMemoryRetriever is intentionally simple.</strong>
+    It matches query keywords against document content using basic string
+    overlap. For production workloads, implement the <code>Retriever</code>
+    interface with a vector database, embedding search, or hybrid retrieval
+    strategy. See <a href="#custom-retriever">Custom Retriever Implementation</a>
+    below.
+  </div>
+
+  <h3>ContextBuilder - Assembling Chunks into Messages</h3>
+
+  <p>
+    <code>ContextBuilder</code> bridges retrieval and inference. It calls
+    the <code>Retriever</code>, collects chunks, and formats them into
+    <code>[]core.Message</code> ready for the model.
+  </p>
+
+<pre><code><span class="comment">// ContextBuilder assembles retrieved chunks into messages for model.</span>
+builder := &amp;pctx.ContextBuilder{
+    Retriever: retriever,
+    MaxChunks: 3,  <span class="comment">// max chunks to include; 0 means use all retrieved</span>
+}
+
+<span class="comment">// Build returns []core.Message with retrieved context as system messages</span>
+msgs, err := builder.Build(ctx, "How do interfaces work?")
+<span class="comment">// msgs[0].Content:</span>
+<span class="comment">// "Relevant context:</span>
+<span class="comment">//</span>
+<span class="comment">// [1] (go-spec): Go interfaces are satisfied implicitly."</span></code></pre>
+
+  <p>
+    <code>MaxChunks</code> controls how many chunks make it into the context.
+    Set it to bound token usage and keep the prompt focused. Zero or negative
+    values mean "use everything the retriever returns."
+  </p>
+
+  <!-- ============================================================ -->
+  <h2 id="structural-typing">3. Structural Typing: ContextProvider</h2>
+
+  <p>
+    The orchestrate layer (layer 2) defines <code>ContextProvider</code>
+    as the interface for retrieving context messages:
+  </p>
+
+<pre><code><span class="comment">// In orchestrate package</span>
+
+<span class="comment">// ContextProvider retrieves context messages for a query.</span>
+type ContextProvider interface {
+    Build(ctx context.Context, query string) ([]core.Message, error)
+}</code></pre>
+
+  <p>
+    Notice that <code>context.ContextBuilder</code> has exactly the same
+    <code>Build</code> method signature. In Go, interfaces are satisfied
+    implicitly - no <code>implements</code> keyword, no import of the
+    orchestrate package needed. This is <strong>structural typing</strong>.
+  </p>
+
+  <div class="tip">
+    <strong>Go structural typing in action.</strong>
+    <code>ContextBuilder</code> satisfies <code>ContextProvider</code>
+    without knowing it exists. The context package has zero dependency on
+    orchestrate. This keeps layer boundaries clean - lower layers never
+    import higher layers.
+  </div>
+
+<pre><code><span class="comment">// Wire it up - ContextBuilder satisfies ContextProvider implicitly</span>
+agent := orchestrate.NewAgentLoop(orchestrate.LoopConfig{
+    Engine:          engine,
+    ContextProvider: contextBuilder,  <span class="comment">// ContextBuilder satisfies ContextProvider</span>
+})</code></pre>
+
+  <!-- ============================================================ -->
+  <h2 id="ephemeral-context">4. Ephemeral Context Injection</h2>
+
+  <p>
+    Key design decision: context is retrieved fresh per <code>Chat()</code>
+    call and injected into the request, but <strong>NOT stored in
+    conversation history</strong>.
+  </p>
+
+  <p>
+    Why? Prevents context from accumulating across turns. Each turn gets
+    fresh, relevant context. Old context documents do not pollute future
+    prompts or consume token budget.
+  </p>
+
+  <div class="arch-diagram">Turn 1: "What is Go?"
+  -> Retrieve: [go-overview doc]
+  -> Request: [system, context-doc, user-msg]
+  -> Memory stores: [system, user-msg, assistant-response]
+  -> Context NOT in memory
+
+Turn 2: "Tell me about channels"
+  -> Retrieve: [go-channels doc]  (FRESH retrieval)
+  -> Request: [system, user-msg-1, assistant-1, context-doc, user-msg-2]
+  -> Memory stores: [..., user-msg-2, assistant-response-2]</div>
+
+  <p>
+    In <code>AgentLoop.Chat</code>, the flow is:
+  </p>
+  <ol>
+    <li>User message arrives.</li>
+    <li>If <code>ContextProvider</code> is set, call <code>Build(ctx, query)</code>
+      to retrieve context messages.</li>
+    <li>Assemble request: system prompt + conversation history + context messages + user message.</li>
+    <li>Send to inference engine.</li>
+    <li>Store user message and assistant response in memory. Context messages are <em>not</em> stored.</li>
+  </ol>
+
+  <div class="info">
+    <strong>In SpecializedLoop</strong>, context is retrieved once per
+    <code>Call</code> using the original prompt and injected into a fresh
+    inner loop before the tool/structured phases.
+  </div>
+
+  <p>
+    This ephemeral injection pattern means:
+  </p>
+  <ul>
+    <li>Token budget stays stable across long conversations.</li>
+    <li>Each turn's context is maximally relevant to that turn's query.</li>
+    <li>No stale knowledge lingers from earlier turns.</li>
+    <li>Memory only contains what the user said and what the model replied.</li>
+  </ul>
+
+  <!-- ============================================================ -->
+  <h2 id="rerank-layer">5. Rerank Layer (Layer 6)</h2>
+
+  <p>
+    Two-stage retrieval: broad recall first, then precise selection.
+    Layer 6 scores retrieved or generated candidates, reorders them by
+    semantic relevance, and picks the best subset.
+  </p>
+
+  <h3>Core Types</h3>
+
+<pre><code><span class="comment">// Candidate represents a scored item for ranking.</span>
+type Candidate struct {
+    Content  string
+    Score    float64
+    Source   string
+    Metadata map[string]any
+}
+
+<span class="comment">// CandidateSet groups candidates with original query.</span>
+type CandidateSet struct {
+    Query      string
+    Candidates []Candidate
+}
+
+<span class="comment">// RelevanceScorer assigns relevance scores to candidates.</span>
+type RelevanceScorer interface {
+    Score(ctx context.Context, query string, candidates []Candidate) ([]Candidate, error)
+}
+
+<span class="comment">// SelectionPolicy controls filtering after scoring.</span>
+type SelectionPolicy struct {
+    TopK     int     <span class="comment">// max candidates to return, 0 means all</span>
+    MinScore float64 <span class="comment">// minimum score threshold, 0 means no filter</span>
+}</code></pre>
+
+  <p>
+    The separation of <code>RelevanceScorer</code> (scoring) and
+    <code>SelectionPolicy</code> (filtering) keeps concerns clean.
+    Swap scorers without changing selection logic. Tune thresholds
+    without touching the scorer.
+  </p>
+
+  <h3>SimpleScorer - Keyword Overlap</h3>
+
+<pre><code><span class="comment">// SimpleScorer scores candidates by keyword overlap with query.</span>
+<span class="comment">// For testing and development only.</span>
+scorer := &amp;rerank.SimpleScorer{}
+
+<span class="comment">// Counts how many query keywords appear in candidate content.</span>
+<span class="comment">// Returns candidates with Score field populated.</span></code></pre>
+
+  <div class="note">
+    <strong>SimpleScorer is for development and testing.</strong>
+    For production, implement <code>RelevanceScorer</code> with a
+    cross-encoder model, LLM-based scoring, or embedding similarity.
+  </div>
+
+  <h3>Reranker - Combines Scoring and Selection</h3>
+
+  <p>
+    <code>Reranker</code> is the primary entry point. It takes a scorer
+    and a selection policy, scores all candidates, sorts by score, then
+    applies the policy to filter.
+  </p>
+
+<pre><code><span class="comment">// Reranker combines a scorer with a selection policy to produce</span>
+<span class="comment">// a refined, filtered candidate list.</span>
+reranker := &amp;rerank.Reranker{
+    Scorer: &amp;rerank.SimpleScorer{},
+    Policy: rerank.SelectionPolicy{
+        TopK:     3,    <span class="comment">// keep top 3</span>
+        MinScore: 0.1,  <span class="comment">// minimum relevance</span>
+    },
+}
+
+results, err := reranker.Rerank(ctx, rerank.CandidateSet{
+    Query: "How do interfaces work?",
+    Candidates: []rerank.Candidate{
+        {Content: "Go interfaces are implicit.", Source: "go-spec", Score: 0},
+        {Content: "Python uses duck typing.", Source: "python-docs", Score: 0},
+        {Content: "Interface satisfaction requires no declaration.", Source: "go-faq", Score: 0},
+    },
+})
+<span class="comment">// results: top 3 candidates sorted by relevance score,</span>
+<span class="comment">// filtered to those with score >= 0.1</span></code></pre>
+
+  <p>The pipeline inside <code>Rerank</code>:</p>
+  <ol>
+    <li>Pass all candidates to <code>Scorer.Score()</code> - populates <code>Score</code> fields.</li>
+    <li>Sort candidates by score descending.</li>
+    <li>Apply <code>MinScore</code> threshold - drop candidates below it.</li>
+    <li>Apply <code>TopK</code> cap - keep only the top K.</li>
+    <li>Return filtered, sorted candidates.</li>
+  </ol>
+
+  <!-- ============================================================ -->
+  <h2 id="candidate-reranker">6. CandidateReranker - Cross-Layer Integration</h2>
+
+  <p>
+    The orchestrate layer defines its own reranking types to avoid importing
+    the rerank package. Same structural typing pattern as ContextProvider.
+  </p>
+
+<pre><code><span class="comment">// In orchestrate package</span>
+
+<span class="comment">// RerankCandidate represents a scored item for plan-level reranking.</span>
+<span class="comment">// Mirrors rerank.Candidate fields to make conversion straightforward</span>
+<span class="comment">// across the layer boundary.</span>
+type RerankCandidate struct {
+    Content  string
+    Score    float64
+    Source   string
+    Metadata map[string]any
+}
+
+<span class="comment">// RerankInput groups candidates with original query for reranking.</span>
+type RerankInput struct {
+    Query      string
+    Candidates []RerankCandidate
+}
+
+<span class="comment">// CandidateReranker scores and filters candidates.</span>
+type CandidateReranker interface {
+    Rerank(ctx context.Context, input RerankInput) ([]RerankCandidate, error)
+}</code></pre>
+
+  <p>
+    The fields in <code>RerankCandidate</code> mirror <code>rerank.Candidate</code>
+    exactly - same names, same types. But they are separate Go types.
+    An adapter function converts between them at the integration boundary:
+  </p>
+
+<pre><code><span class="comment">// Adapter wraps rerank.Reranker to satisfy orchestrate.CandidateReranker.</span>
+<span class="comment">// Converts orchestrate types to rerank types, calls Rerank, converts back.</span>
+func adaptReranker(r *rerank.Reranker) orchestrate.CandidateReranker {
+    return &amp;rerankAdapter{inner: r}
+}
+
+<span class="comment">// rerankAdapter bridges the type boundary.</span>
+type rerankAdapter struct {
+    inner *rerank.Reranker
+}
+
+func (a *rerankAdapter) Rerank(ctx context.Context, input orchestrate.RerankInput) ([]orchestrate.RerankCandidate, error) {
+    <span class="comment">// Convert orchestrate.RerankCandidate -> rerank.Candidate</span>
+    candidates := make([]rerank.Candidate, len(input.Candidates))
+    for i, c := range input.Candidates {
+        candidates[i] = rerank.Candidate{
+            Content: c.Content, Score: c.Score,
+            Source: c.Source, Metadata: c.Metadata,
+        }
+    }
+
+    <span class="comment">// Call rerank layer</span>
+    results, err := a.inner.Rerank(ctx, rerank.CandidateSet{
+        Query: input.Query, Candidates: candidates,
+    })
+    if err != nil {
+        return nil, err
+    }
+
+    <span class="comment">// Convert rerank.Candidate -> orchestrate.RerankCandidate</span>
+    out := make([]orchestrate.RerankCandidate, len(results))
+    for i, r := range results {
+        out[i] = orchestrate.RerankCandidate{
+            Content: r.Content, Score: r.Score,
+            Source: r.Source, Metadata: r.Metadata,
+        }
+    }
+    return out, nil
+}</code></pre>
+
+  <div class="tip">
+    <strong>Why separate types?</strong>
+    The orchestrate package sits at layer 2. The rerank package sits at
+    layer 6. If orchestrate imported rerank directly, it would create a
+    dependency from a lower layer to a higher one. Mirrored types plus
+    an adapter function keep the dependency direction correct: user code
+    (above both layers) imports both and wires them together.
+  </div>
+
+  <!-- ============================================================ -->
+  <h2 id="full-pipeline">7. Full RAG Pipeline with PlanExecutor</h2>
+
+  <p>
+    End-to-end example combining retrieval, reranking, and inference
+    using <code>PlanExecutor</code>. This shows how the layers compose
+    into a complete RAG pipeline.
+  </p>
+
+<pre><code><span class="comment">// Step 1: Build retriever and context provider</span>
+retriever := pctx.NewInMemoryRetriever(
+    pctx.Document{Content: "Go interfaces are satisfied implicitly.", Source: "go-spec"},
+    pctx.Document{Content: "Goroutines are lightweight threads.", Source: "go-concurrency"},
+    pctx.Document{Content: "Channels are typed conduits.", Source: "go-channels"},
+)
+contextProvider := &amp;pctx.ContextBuilder{Retriever: retriever, MaxChunks: 10}
+
+<span class="comment">// Step 2: Build reranker</span>
+reranker := &amp;rerank.Reranker{
+    Scorer: &amp;rerank.SimpleScorer{},
+    Policy: rerank.SelectionPolicy{TopK: 3, MinScore: 0.1},
+}
+
+<span class="comment">// Step 3: Register step handlers</span>
+handlers := map[orchestrate.StepType]orchestrate.StepHandler{
+    orchestrate.StepRetrieve: orchestrate.RetrieveHandler(contextProvider),
+    orchestrate.StepRerank:   orchestrate.RerankHandler(adaptReranker(reranker)),
+    orchestrate.StepInfer:    orchestrate.InferHandler(engine),
+}
+
+<span class="comment">// Step 4: Define execution plan</span>
+plan := orchestrate.ExecutionPlan{
+    Steps: []orchestrate.Step{
+        {Name: "retrieve", Type: orchestrate.StepRetrieve, Input: "How do interfaces work?"},
+        {Name: "rerank",   Type: orchestrate.StepRerank},
+        {Name: "infer",    Type: orchestrate.StepInfer},
+    },
+}
+
+<span class="comment">// Step 5: Execute</span>
+executor := orchestrate.NewPlanExecutor(handlers)
+results, err := executor.Execute(ctx, plan)
+<span class="comment">// results contains completed steps with Output populated</span>
+<span class="comment">// Output of step N becomes available as Input of step N+1</span></code></pre>
+
+  <p>The execution flow:</p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Step</th>
+        <th>Type</th>
+        <th>Input</th>
+        <th>Output</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>retrieve</code></td>
+        <td><code>StepRetrieve</code></td>
+        <td>Query string</td>
+        <td><code>[]core.Message</code> with context</td>
+      </tr>
+      <tr>
+        <td><code>rerank</code></td>
+        <td><code>StepRerank</code></td>
+        <td><code>RerankInput</code> from previous step</td>
+        <td><code>[]RerankCandidate</code> filtered and sorted</td>
+      </tr>
+      <tr>
+        <td><code>infer</code></td>
+        <td><code>StepInfer</code></td>
+        <td><code>inference.Request</code></td>
+        <td><code>*inference.Result</code> with model response</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="info">
+    <strong>PlanExecutor chains step outputs.</strong>
+    Output of step N is available as Input of step N+1. This means
+    retrieved context flows into reranking, and reranked results flow
+    into inference - all without manual wiring between steps.
+  </div>
+
+  <!-- ============================================================ -->
+  <h2 id="custom-retriever">8. Custom Retriever Implementation</h2>
+
+  <p>
+    <code>InMemoryRetriever</code> works for prototyping. For production,
+    implement <code>Retriever</code> against a real knowledge store.
+    Here is a vector database example:
+  </p>
+
+<pre><code>type VectorRetriever struct {
+    db       VectorDB
+    embedder Embedder
+}
+
+func (vr *VectorRetriever) Retrieve(ctx context.Context, query string, limit int) ([]pctx.Chunk, error) {
+    <span class="comment">// Embed the query into a vector</span>
+    embedding, err := vr.embedder.Embed(ctx, query)
+    if err != nil {
+        return nil, err
+    }
+
+    <span class="comment">// Search vector DB for nearest neighbors</span>
+    results, err := vr.db.Search(ctx, embedding, limit)
+    if err != nil {
+        return nil, err
+    }
+
+    <span class="comment">// Convert DB results to Chunks</span>
+    chunks := make([]pctx.Chunk, len(results))
+    for i, r := range results {
+        chunks[i] = pctx.Chunk{
+            Content:  r.Text,
+            Source:   r.DocID,
+            Score:    r.Similarity,
+        }
+    }
+    return chunks, nil
+}</code></pre>
+
+  <p>The pattern is always the same:</p>
+  <ol>
+    <li>Accept <code>query</code> and <code>limit</code>.</li>
+    <li>Transform the query into whatever your backend needs (embedding, keywords, SQL).</li>
+    <li>Query the backend.</li>
+    <li>Map results to <code>[]pctx.Chunk</code>.</li>
+    <li>Return.</li>
+  </ol>
+
+  <div class="tip">
+    <strong>Retriever implementations to consider:</strong>
+    <ul>
+      <li><strong>Vector DB</strong> (Pinecone, Weaviate, pgvector) - embedding similarity search.</li>
+      <li><strong>Full-text search</strong> (Elasticsearch, Meilisearch) - keyword and BM25 scoring.</li>
+      <li><strong>Hybrid</strong> - combine vector and keyword retrieval, then rerank.</li>
+      <li><strong>API-backed</strong> - call an external knowledge service or search engine.</li>
+      <li><strong>File system</strong> - read and score local documents or code files.</li>
+    </ul>
+  </div>
+
+  <p>
+    Once implemented, plug it into <code>ContextBuilder</code> and the
+    rest of the pipeline works unchanged:
+  </p>
+
+<pre><code><span class="comment">// Swap InMemoryRetriever for VectorRetriever - nothing else changes</span>
+contextProvider := &amp;pctx.ContextBuilder{
+    Retriever: &amp;VectorRetriever{db: pineconeClient, embedder: openaiEmbedder},
+    MaxChunks: 5,
+}</code></pre>
+
+  <div class="info">
+    <strong>Custom RelevanceScorer works the same way.</strong>
+    Implement <code>RelevanceScorer</code> with a cross-encoder model or
+    LLM-based scoring, then plug it into <code>Reranker</code>. The
+    <code>SimpleScorer</code> is a drop-in placeholder for development.
+  </div>
+
+</div>
+
+<footer>pagantic - Probabilistic Agentic Control System</footer>
+
+</body>
+</html>

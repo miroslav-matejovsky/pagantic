@@ -1,0 +1,745 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Architecture - pagantic</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<nav>
+  <a href="index.html" class="logo">pagantic</a>
+  <a href="architecture.html">Architecture</a>
+  <a href="orchestration.html">Orchestration</a>
+  <a href="retrieval.html">Retrieval</a>
+  <a href="tools.html">Tools</a>
+  <a href="constraints.html">Constraints</a>
+  <a href="https://github.com/miroslav-matejovsky/pagantic" target="_blank" style="margin-left: auto;">GitHub</a>
+</nav>
+
+<div class="container">
+
+<div class="breadcrumb"><a href="index.html">Home</a> / Architecture</div>
+
+<div class="page-header">
+  <h1>Layered Architecture</h1>
+  <p>How pagantic enforces dependency direction, structural typing, and deterministic control around probabilistic inference.</p>
+</div>
+
+<div class="toc">
+  <h4>Table of Contents</h4>
+  <ul>
+    <li><a href="#layer-system">1. The 10-Layer System</a></li>
+    <li><a href="#dependency-flow">2. Dependency Flow</a></li>
+    <li><a href="#structural-typing">3. Structural Typing Pattern</a></li>
+    <li><a href="#adapter-pattern">4. Adapter Pattern</a></li>
+    <li><a href="#core-types">5. Core Domain Types</a></li>
+    <li><a href="#engine-abstraction">6. Engine Abstraction (kronk)</a></li>
+    <li><a href="#observability">7. Observability Integration</a></li>
+    <li><a href="#design-principles">8. Design Principles</a></li>
+  </ul>
+</div>
+
+<!-- ================================================================== -->
+<h2 id="layer-system">1. The 10-Layer System</h2>
+
+<p>
+  pagantic organizes code into numbered directories under <code>layers/</code>.
+  Each directory name starts with a two-digit prefix: <code>00_core</code>,
+  <code>01_inference</code>, <code>02_orchestrate</code>, and so on up to
+  <code>10_observe</code>.
+</p>
+
+<p>
+  The numbering is not decorative. It encodes a hard rule:
+  <strong>higher-numbered layers may depend on lower-numbered layers, never the reverse.</strong>
+  Layer 05 can import layer 00 and 01, but layer 01 cannot import layer 05.
+  This prevents circular dependencies and keeps the dependency graph a DAG.
+</p>
+
+<div class="tip">
+  <strong>CI enforcement.</strong> These rules are checked automatically by
+  <code>go-arch-lint</code> at CI time. A pull request that adds an import from
+  a lower layer to a higher layer will fail the lint check before review.
+</div>
+
+<h3>Full Layer Table</h3>
+
+<table>
+  <thead>
+    <tr><th>Layer</th><th>Package</th><th>Purpose</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>0</td><td><code>core</code></td><td>Shared domain types - Message, ToolCall, Schema, TokenUsage</td></tr>
+    <tr><td>1</td><td><code>inference</code></td><td>Engine interface for model inference</td></tr>
+    <tr><td>2</td><td><code>orchestrate</code></td><td>Control loops - AgentLoop, SpecializedLoop, PlanExecutor, RedundantLoop</td></tr>
+    <tr><td>3</td><td><code>context</code></td><td>Knowledge retrieval - Retriever, ContextBuilder</td></tr>
+    <tr><td>4</td><td><code>tool</code></td><td>Tool registry and execution</td></tr>
+    <tr><td>5</td><td><code>constraint</code></td><td>Output enforcement - JSON validation, repair, schema, GBNF grammar</td></tr>
+    <tr><td>6</td><td><code>rerank</code></td><td>Candidate scoring and reranking</td></tr>
+    <tr><td>7</td><td><code>validate</code></td><td>Guardrails, rule validation, retry policy</td></tr>
+    <tr><td>8</td><td><code>prompt</code></td><td>Prompt construction - SystemPrompt, InstructionSet, Template</td></tr>
+    <tr><td>9</td><td><code>memory</code></td><td>State management - ConversationBuffer, SessionState, WorkingMemory</td></tr>
+    <tr><td>10</td><td><code>observe</code></td><td>Tracing, metrics, event logging, cost tracking</td></tr>
+  </tbody>
+</table>
+
+<p>
+  Each layer is a standalone Go package with its own <code>doc.go</code> explaining
+  domain concepts and design decisions. Reading those files is the recommended
+  starting point before modifying any layer.
+</p>
+
+<!-- ================================================================== -->
+<h2 id="dependency-flow">2. Dependency Flow</h2>
+
+<div class="arch-diagram">
+Adapters (cli, tui, api)
+    |
+    v
+orchestrate  &lt;-- Control hub: coordinates all middle layers
+    |
+    +-------+--------+----------+---------+----------+--------+
+    |       |        |          |         |          |        |
+    v       v        v          v         v          v        v
+context   tool   constraint   rerank   validate   prompt   memory
+    |       |        |          |         |          |        |
+    +-------+--------+----------+---------+----------+--------+
+    |
+    v
+inference  &lt;-- Engine abstraction (Infer + ModelInfo)
+    |
+    v
+kronk      &lt;-- SDK adapter (converts pagantic types to model.D)
+    |
+    v
+core       &lt;-- Shared types (Message, ToolCall, Schema, TokenUsage)
+</div>
+
+<h3>Key Insight: Flat Middle Layers</h3>
+
+<p>
+  Layers 3 through 10 (context, tool, constraint, rerank, validate, prompt,
+  memory, observe) form a <strong>flat band</strong>. They do not depend on each
+  other. Each middle layer depends only on <code>core</code> (layer 0) and
+  optionally on <code>inference</code> (layer 1).
+</p>
+
+<p>
+  The <code>orchestrate</code> layer (layer 2) is the only layer that reaches
+  across the band. It imports from tool, constraint, memory, and observe to
+  coordinate their work. This makes orchestrate the "control hub" -- it knows
+  about everything, but everything does not know about it.
+</p>
+
+<div class="info">
+  <strong>Why this matters.</strong> You can change the reranking algorithm without
+  touching context retrieval. You can swap the prompt template without affecting
+  tool execution. Each middle layer evolves independently as long as it speaks
+  the shared vocabulary defined in <code>core</code>.
+</div>
+
+<!-- ================================================================== -->
+<h2 id="structural-typing">3. Structural Typing Pattern</h2>
+
+<p>
+  Go interfaces are satisfied implicitly. A type does not need to declare
+  "I implement X" -- it just needs to have the right methods. pagantic exploits
+  this to keep layers decoupled.
+</p>
+
+<h3>Example: ContextProvider</h3>
+
+<p>
+  The orchestrate layer defines what it needs from a context provider:
+</p>
+
+<pre><code><span class="comment">// In layers/02_orchestrate/loop.go</span>
+<span class="comment">// orchestrate defines the interface it consumes:</span>
+type ContextProvider interface {
+    Build(ctx context.Context, query string) ([]core.Message, error)
+}
+</code></pre>
+
+<p>
+  The context layer implements a <code>ContextBuilder</code> that satisfies this
+  interface -- without importing orchestrate:
+</p>
+
+<pre><code><span class="comment">// In layers/03_context/builder.go</span>
+<span class="comment">// context.ContextBuilder satisfies orchestrate.ContextProvider</span>
+<span class="comment">// via Go structural typing -- no import of orchestrate needed.</span>
+type ContextBuilder struct {
+    Retriever Retriever
+    MaxChunks int
+}
+
+func (cb *ContextBuilder) Build(ctx context.Context, query string) ([]core.Message, error) {
+    <span class="comment">// retrieves chunks from Retriever, assembles into system messages</span>
+    chunks, err := cb.Retriever.Retrieve(ctx, query, cb.MaxChunks)
+    if err != nil {
+        return nil, err
+    }
+
+    var builder strings.Builder
+    builder.WriteString("Relevant context:\n\n")
+    for i, chunk := range chunks {
+        fmt.Fprintf(&amp;builder, "[%d] (%s): %s", i+1, chunk.Source, chunk.Content)
+        if i &lt; len(chunks)-1 {
+            builder.WriteString("\n")
+        }
+    }
+
+    return []core.Message{core.NewSystemMessage(builder.String())}, nil
+}
+</code></pre>
+
+<h3>Example: CandidateReranker</h3>
+
+<p>
+  Same pattern. Orchestrate defines <code>CandidateReranker</code>:
+</p>
+
+<pre><code><span class="comment">// In layers/02_orchestrate/plan.go</span>
+type CandidateReranker interface {
+    Rerank(ctx context.Context, input RerankInput) ([]RerankCandidate, error)
+}
+</code></pre>
+
+<p>
+  The rerank layer has its own <code>Reranker</code> type with a matching
+  <code>Rerank</code> method. An adapter function at the call site converts
+  between orchestrate's <code>RerankCandidate</code> and rerank's
+  <code>Candidate</code> types.
+</p>
+
+<h3>Why This Pattern?</h3>
+
+<ul>
+  <li><strong>No circular dependencies.</strong> Layer 3 never imports layer 2. The dependency arrow points downward only.</li>
+  <li><strong>Independent evolution.</strong> You can add fields to <code>ContextBuilder</code> or change its retrieval strategy without modifying orchestrate.</li>
+  <li><strong>Easy testing.</strong> Any struct with a <code>Build</code> method of the right signature can stand in as a mock.</li>
+</ul>
+
+<div class="note">
+  <strong>Structs cannot use structural typing.</strong> Go's implicit satisfaction
+  works for interfaces only, not structs. For struct types that cross layer
+  boundaries -- like <code>RerankCandidate</code> -- the fields are explicitly
+  mirrored in each layer. Orchestrate defines its own <code>RerankCandidate</code>
+  with the same fields as rerank's <code>Candidate</code>, and adapter code
+  converts between them at the call site.
+</div>
+
+<pre><code><span class="comment">// orchestrate defines its own struct (layers/02_orchestrate/plan.go):</span>
+type RerankCandidate struct {
+    Content  string
+    Score    float64
+    Source   string
+    Metadata map[string]any
+}
+
+<span class="comment">// rerank defines its own struct (layers/06_rerank/scorer.go):</span>
+type Candidate struct {
+    Content  string
+    Score    float64
+    Source   string
+    Metadata map[string]any
+}
+
+<span class="comment">// Adapter code at the call site converts between the two.</span>
+<span class="comment">// Fields are identical, making conversion straightforward.</span>
+</code></pre>
+
+<!-- ================================================================== -->
+<h2 id="adapter-pattern">4. Adapter Pattern</h2>
+
+<p>
+  Adapters live in <code>adapters/</code> (cli, tui, api). They are thin shells
+  that translate external input into internal types, call the orchestrate layer,
+  and format output. An adapter must <strong>not</strong> contain:
+</p>
+
+<ul>
+  <li>Business logic or decision-making</li>
+  <li>Orchestration or control flow</li>
+  <li>Tool execution or tool definitions</li>
+  <li>Validation or constraint enforcement</li>
+  <li>Prompt construction or template rendering</li>
+</ul>
+
+<h3>CLI Adapter Example</h3>
+
+<pre><code><span class="comment">// adapters/cli/runner.go - thin shell around orchestrate</span>
+type RunConfig struct {
+    Engine          inference.Engine
+    SystemPrompt    string
+    Registry        *tool.Registry
+    ContextProvider orchestrate.ContextProvider
+    Stream          *inference.StreamHandler
+    Timeout         time.Duration
+    Out             io.Writer
+}
+
+type Runner struct {
+    cfg RunConfig
+}
+
+func NewRunner(cfg RunConfig) *Runner {
+    if cfg.Engine == nil {
+        panic("cli: RunConfig.Engine must not be nil")
+    }
+    if cfg.Out == nil {
+        cfg.Out = os.Stdout
+    }
+    return &amp;Runner{cfg: cfg}
+}
+
+func (r *Runner) Run(ctx context.Context, prompt string) error {
+    <span class="comment">// 1. Apply timeout</span>
+    timeout := r.cfg.Timeout
+    if timeout &lt;= 0 {
+        timeout = DefaultTimeout <span class="comment">// 120s</span>
+    }
+    ctx, cancel := context.WithTimeout(ctx, timeout)
+    defer cancel()
+
+    <span class="comment">// 2. Delegate to orchestrate layer</span>
+    agent := orchestrate.NewAgentLoop(orchestrate.LoopConfig{
+        SystemPrompt:    r.cfg.SystemPrompt,
+        Engine:          r.cfg.Engine,
+        Tools:           r.cfg.Registry,
+        Stream:          r.cfg.Stream,
+        ContextProvider: r.cfg.ContextProvider,
+    })
+
+    result, err := agent.Chat(ctx, prompt)
+    if err != nil {
+        return fmt.Errorf("cli: %w", err)
+    }
+
+    <span class="comment">// 3. Write output (only if not streaming)</span>
+    if r.cfg.Stream == nil {
+        fmt.Fprintln(r.cfg.Out, result.Content)
+    }
+    return nil
+}
+</code></pre>
+
+<p>
+  Notice what <code>Runner.Run</code> does: set timeout, build AgentLoop, call
+  <code>Chat</code>, write output. No prompt construction, no tool execution, no
+  JSON validation. All of that lives in the layers below.
+</p>
+
+<div class="tip">
+  <strong>Testing adapters.</strong> Because adapters contain no logic, testing them
+  means testing wiring: "does the right config reach the right layer?" A mock
+  Engine that returns a canned result is all you need.
+</div>
+
+<!-- ================================================================== -->
+<h2 id="core-types">5. Core Domain Types</h2>
+
+<p>
+  Layer 0 (<code>core</code>) defines the shared vocabulary. Every other layer
+  speaks these types. There are no external dependencies -- just plain Go structs.
+</p>
+
+<h3>Message</h3>
+
+<pre><code><span class="comment">// core/message.go - the conversation unit</span>
+type Role string
+
+const (
+    RoleSystem    Role = "system"
+    RoleUser      Role = "user"
+    RoleAssistant Role = "assistant"
+    RoleTool      Role = "tool"
+)
+
+type Message struct {
+    Role       Role
+    Content    string
+    ToolCalls  []ToolCall <span class="comment">// assistant requesting tool execution</span>
+    ToolCallID string     <span class="comment">// tool result referencing original call</span>
+    Name       string     <span class="comment">// tool name for tool result messages</span>
+}
+
+<span class="comment">// Convenience constructors enforce correct field combinations:</span>
+func NewSystemMessage(content string) Message   { ... }
+func NewUserMessage(content string) Message     { ... }
+func NewAssistantMessage(content string) Message { ... }
+func NewToolResultMessage(callID, name, content string) Message { ... }
+</code></pre>
+
+<p>
+  Fields are populated differently depending on the Role. System and user
+  messages carry Content only. Assistant messages carry Content and/or ToolCalls.
+  Tool messages carry Content, ToolCallID, and Name.
+</p>
+
+<h3>ToolCall and ToolDefinition</h3>
+
+<pre><code><span class="comment">// core/toolcall.go</span>
+type ToolCall struct {
+    ID        string
+    Name      string
+    Arguments map[string]any
+}
+
+type ToolDefinition struct {
+    Name        string
+    Description string
+    Parameters  Schema <span class="comment">// JSON Schema for the function's input</span>
+}
+
+type ToolResult struct {
+    CallID  string
+    Name    string
+    Content string
+    IsError bool
+}
+</code></pre>
+
+<h3>Schema</h3>
+
+<pre><code><span class="comment">// core/schema.go - JSON Schema subset for structured output</span>
+type Schema struct {
+    Type        string            `json:"type,omitempty"`
+    Description string            `json:"description,omitempty"`
+    Properties  map[string]Schema `json:"properties,omitempty"`
+    Required    []string          `json:"required,omitempty"`
+    Enum        []string          `json:"enum,omitempty"`
+    Items       *Schema           `json:"items,omitempty"`
+    Default     any               `json:"default,omitempty"`
+}
+</code></pre>
+
+<p>
+  Schema covers the common cases: objects with typed properties, arrays, enums,
+  and primitive types. It is used both for structured LLM output and for tool
+  parameter definitions.
+</p>
+
+<h3>TokenUsage</h3>
+
+<pre><code><span class="comment">// core/usage.go - inference metrics</span>
+type TokenUsage struct {
+    PromptTokens    int
+    ReasoningTokens int
+    OutputTokens    int
+    ContextTokens   int
+    ContextWindow   int
+    TokensPerSecond float64
+}
+</code></pre>
+
+<div class="info">
+  <strong>Why these types live in core.</strong> Every layer needs to pass messages
+  around, describe tools, or report token usage. Putting these in layer 0 means
+  no circular imports -- everyone can reach them, but core reaches nobody.
+</div>
+
+<!-- ================================================================== -->
+<h2 id="engine-abstraction">6. Engine Abstraction (kronk)</h2>
+
+<p>
+  The <code>inference.Engine</code> interface is the key abstraction separating
+  pagantic from any specific model runtime:
+</p>
+
+<pre><code><span class="comment">// layers/01_inference/engine.go</span>
+type Engine interface {
+    Infer(ctx context.Context, req Request) (*Result, error)
+    ModelInfo() ModelInfo
+}
+
+type Request struct {
+    Messages    []core.Message
+    Tools       []core.ToolDefinition
+    Schema      *core.Schema
+    Grammar     string     <span class="comment">// GBNF grammar for decoder-level constraint</span>
+    MaxTokens   int
+    Temperature *float64   <span class="comment">// nil means use model default</span>
+    Options     map[string]any
+}
+
+type Result struct {
+    Content   string
+    ToolCalls []core.ToolCall
+    Messages  []core.Message
+    Usage     core.TokenUsage
+}
+
+type ModelInfo struct {
+    Name          string
+    ContextWindow int
+}
+</code></pre>
+
+<p>
+  Everything above inference (orchestrate, adapters) works with <code>Engine</code>.
+  They never see vendor-specific types. This means you can swap model runtimes
+  without touching any orchestration code.
+</p>
+
+<h3>kronk Adapter</h3>
+
+<p>
+  The <code>kronk</code> package bridges pagantic types to kronk's
+  <code>model.D</code> format. It lives outside the layer hierarchy because it
+  depends on an external SDK.
+</p>
+
+<pre><code><span class="comment">// kronk/adapter.go</span>
+type Adapter struct {
+    chat    llmChat <span class="comment">// interface that kronk engine satisfies</span>
+    handler *inference.StreamHandler
+}
+
+<span class="comment">// llmChat is the interface kronk's engine satisfies:</span>
+type llmChat interface {
+    ChatStreaming(ctx context.Context, d model.D) (&lt;-chan model.ChatResponse, error)
+    ModelConfig() model.Config
+}
+
+func NewAdapter(chat llmChat, handler *inference.StreamHandler) *Adapter {
+    return &amp;Adapter{chat: chat, handler: handler}
+}
+
+<span class="comment">// Infer converts pagantic Request to model.D, calls ChatStreaming,</span>
+<span class="comment">// streams chunks, and assembles the Result.</span>
+func (a *Adapter) Infer(ctx context.Context, req inference.Request) (*inference.Result, error) {
+    requestD := model.D{}
+    requestD["messages"] = messagesToD(req.Messages)
+    if req.MaxTokens &gt; 0 {
+        requestD["max_tokens"] = req.MaxTokens
+    }
+    if len(req.Tools) &gt; 0 {
+        requestD["tools"] = toolDefsToD(req.Tools)
+    }
+    if req.Grammar != "" {
+        requestD["grammar"] = req.Grammar
+    }
+    if req.Schema != nil {
+        requestD["json_schema"] = schemaToD(*req.Schema)
+    }
+
+    ch, err := a.chat.ChatStreaming(ctx, requestD)
+    <span class="comment">// ... stream processing, tool call extraction, usage tracking</span>
+    return &amp;inference.Result{
+        Content:   content.String(),
+        ToolCalls: toolCalls,
+        Messages:  messages,
+        Usage:     extractUsage(a.chat, lastResp),
+    }, nil
+}
+
+func (a *Adapter) ModelInfo() inference.ModelInfo {
+    cfg := a.chat.ModelConfig()
+    return inference.ModelInfo{
+        Name:          path.Base(cfg.ModelFiles[0]),
+        ContextWindow: cfg.ContextWindow(),
+    }
+}
+</code></pre>
+
+<div class="tip">
+  <strong>Typical usage at the application level:</strong>
+<pre><code>krn, cleanup, err := kronk.Load(ctx, kronk.Config{
+    ModelSource: "unsloth/gemma-4-E4B-it",
+})
+defer cleanup()
+engine := kronk.NewAdapter(krn, nil) <span class="comment">// satisfies inference.Engine</span>
+</code></pre>
+</div>
+
+<!-- ================================================================== -->
+<h2 id="observability">7. Observability Integration</h2>
+
+<p>
+  Any layer can record events through the <code>observe</code> package. The
+  pattern is consistent: capture start time, do work, record event with duration
+  and error.
+</p>
+
+<pre><code><span class="comment">// Recording an event from any layer:</span>
+observer.Record(observe.Event{
+    Timestamp: started,
+    Layer:     "orchestrate",
+    Action:    "infer",
+    Data:      map[string]any{"messages": len(req.Messages)},
+    Duration:  time.Since(started),
+    Error:     err,
+})
+</code></pre>
+
+<h3>Core Types</h3>
+
+<pre><code><span class="comment">// layers/10_observe/event.go</span>
+type Event struct {
+    Timestamp time.Time
+    Layer     string
+    Action    string
+    Data      map[string]any
+    Duration  time.Duration
+    Error     error
+}
+
+type EventLog interface {
+    Record(event Event)
+    Events() []Event
+}
+</code></pre>
+
+<pre><code><span class="comment">// layers/10_observe/trace.go</span>
+type TraceRecorder interface {
+    StartSpan(ctx context.Context, name string) (context.Context, Span)
+}
+
+type Span interface {
+    End()
+    SetAttribute(key string, value any)
+    RecordError(err error)
+}
+</code></pre>
+
+<pre><code><span class="comment">// layers/10_observe/metrics.go</span>
+type MetricsCollector interface {
+    RecordLatency(layer string, duration time.Duration)
+    RecordTokens(usage core.TokenUsage)
+    IncrementCounter(name string, delta int)
+}
+</code></pre>
+
+<pre><code><span class="comment">// layers/10_observe/cost.go</span>
+type CostTracker interface {
+    RecordUsage(model string, usage core.TokenUsage)
+    TotalCost() float64
+}
+</code></pre>
+
+<h3>Implementations</h3>
+
+<p>
+  Each interface has two implementations: an in-memory version for testing and
+  development, and a no-op version for production paths that do not need
+  observability:
+</p>
+
+<table>
+  <thead>
+    <tr><th>Interface</th><th>In-Memory</th><th>No-Op</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>EventLog</code></td><td><code>InMemoryEventLog</code></td><td><code>NoOpEventLog</code></td></tr>
+    <tr><td><code>TraceRecorder</code></td><td><code>InMemoryTracer</code></td><td><code>NoOpTracer</code></td></tr>
+    <tr><td><code>MetricsCollector</code></td><td><code>InMemoryMetrics</code></td><td><code>NoOpMetrics</code></td></tr>
+    <tr><td><code>CostTracker</code></td><td><code>InMemoryCostTracker</code></td><td><code>NoOpCostTracker</code></td></tr>
+  </tbody>
+</table>
+
+<div class="info">
+  <strong>Thread safety.</strong> All in-memory implementations use
+  <code>sync.Mutex</code> for safe concurrent access. Events and spans are
+  deep-copied on read and write to prevent aliasing bugs.
+</div>
+
+<!-- ================================================================== -->
+<h2 id="design-principles">8. Design Principles</h2>
+
+<h3>Deterministic Control Around Probabilistic Inference</h3>
+
+<p>
+  LLM output is inherently non-deterministic. pagantic wraps it with
+  deterministic control structures: tool loops with iteration limits, schema
+  validation with repair, GBNF grammar constraints at the decoder level, and
+  redundant inference with majority voting. The probabilistic part is
+  contained within <code>Engine.Infer()</code> -- everything outside that call
+  is predictable and testable.
+</p>
+
+<h3>Explicit State</h3>
+
+<p>
+  No hidden closures, no package-level globals, no init() functions with side
+  effects. Conversation state lives in <code>ConversationBuffer</code>. Observer
+  state lives in <code>EventLog</code>. Configuration is passed as structs.
+  This means you can inspect any value at any point in the call stack.
+</p>
+
+<pre><code><span class="comment">// State is always visible and inspectable:</span>
+agent := orchestrate.NewAgentLoop(orchestrate.LoopConfig{
+    Engine:       engine,
+    Tools:        registry,
+    SystemPrompt: "You are helpful.",
+    MaxTokens:    2048,
+    Observer:     &amp;observe.InMemoryEventLog{},
+})
+
+<span class="comment">// After a call, you can inspect everything:</span>
+messages := agent.Messages()     <span class="comment">// full conversation history</span>
+events := observer.Events()      <span class="comment">// every action that happened</span>
+</code></pre>
+
+<h3>No Magic</h3>
+
+<p>
+  Every inference call is logged. Every tool execution is recorded. Every
+  structured output is validated against its schema. Every JSON repair attempt
+  is traceable. When something goes wrong, the event log tells you exactly what
+  happened, in what order, and how long each step took.
+</p>
+
+<h3>Composable Constraints</h3>
+
+<p>
+  Output constraints can be layered:
+</p>
+
+<ol>
+  <li><strong>GBNF grammar</strong> -- decoder-level constraint that forces the model to produce tokens matching a grammar.</li>
+  <li><strong>JSON schema</strong> -- structural validation after generation.</li>
+  <li><strong>Enum normalization</strong> -- coerces string values to match allowed enum entries.</li>
+  <li><strong>JSON repair</strong> -- fixes common LLM JSON errors (trailing commas, unquoted keys).</li>
+  <li><strong>Schema validation</strong> -- final check that output matches required fields and types.</li>
+</ol>
+
+<p>
+  These are not mutually exclusive. A single <code>ChatStructured</code> call
+  can apply grammar constraint at inference time, then repair, normalize, and
+  validate the result:
+</p>
+
+<pre><code><span class="comment">// From AgentLoop.ChatStructured -- constraints compose naturally:</span>
+result, err := al.infer(ctx, inference.Request{
+    Messages: messages,
+    Schema:   &amp;schema,
+    Grammar:  al.cfg.Grammar, <span class="comment">// decoder-level GBNF</span>
+})
+
+<span class="comment">// Post-inference constraint pipeline:</span>
+if json.Valid([]byte(result.Content)) {
+    result.Content = constraint.NormalizeEnumValues(result.Content, schema)
+    return al.validateSchema(result, schema)
+}
+
+repaired := constraint.RepairJSON(result.Content)
+result.Content = constraint.NormalizeEnumValues(repaired, schema)
+return al.validateSchema(result, schema)
+</code></pre>
+
+<div class="note">
+  <strong>Grammar is optional.</strong> Not all models support GBNF grammar.
+  When <code>Grammar</code> is empty, pagantic relies on post-generation
+  constraints (repair + validation) to enforce structure. When grammar is
+  available, it provides a stronger guarantee at the decoder level.
+</div>
+
+</div><!-- /container -->
+
+<footer>pagantic - Probabilistic Agentic Control System</footer>
+
+</body>
+</html>
