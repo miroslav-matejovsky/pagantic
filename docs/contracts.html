@@ -59,8 +59,8 @@
 
 <p>
   All data entering or leaving pagantic flows through two types:
-  <a href="glossary.html#term-system-request">SystemRequest</a> (inbound) and
-  <a href="glossary.html#term-system-response">SystemResponse</a> (outbound).
+  <a href="glossary.html#system-request">SystemRequest</a> (inbound) and
+  <a href="glossary.html#system-response">SystemResponse</a> (outbound).
   These types define the system boundary. No internal layer is accessible without
   passing through them first.
 </p>
@@ -68,7 +68,7 @@
 <!-- ================================================================== -->
 <h3 id="system-request">SystemRequest</h3>
 
-<p>Input from <a href="glossary.html#term-adapter">adapters</a> into the system. Adapters construct this from external input - HTTP requests, CLI arguments, TUI interactions - and pass it to the orchestration facade.</p>
+<p>Input from <a href="glossary.html#adapter">adapters</a> into the system. Adapters construct this from external input - HTTP requests, CLI arguments, TUI interactions - and pass it to the orchestration facade.</p>
 
 <pre><code>SystemRequest {
     <span class="comment">// Correlation</span>
@@ -88,7 +88,6 @@
 
     <span class="comment">// Capabilities</span>
     Tools       []string        <span class="comment">// Allowed tool names (empty = all registered)</span>
-    Context     ContextConfig   <span class="comment">// Context provider configuration</span>
 }</code></pre>
 
 <dl>
@@ -96,7 +95,7 @@
   <dd>Unique identifier for this request. If the adapter does not provide one, pagantic generates a UUID at the system boundary. Used to correlate all events, logs, and spans belonging to this request.</dd>
 
   <dt>SessionID</dt>
-  <dd>Stable identifier for a multi-turn conversation. All requests in the same <a href="glossary.html#term-agent-loop">AgentLoop</a> session share a SessionID. Single-shot requests may leave this empty.</dd>
+  <dd>Stable identifier for a multi-turn conversation. All requests in the same <a href="orchestration.html#agentloop">AgentLoop</a> session share a SessionID. Single-shot requests may leave this empty.</dd>
 
   <dt>TraceID</dt>
   <dd>Distributed tracing root. Propagated from external callers (e.g., HTTP trace headers) or generated internally. All spans created during execution are children of this trace.</dd>
@@ -105,7 +104,7 @@
   <dd>Ordered conversation history. Each <code>core.Message</code> carries a role (system, user, assistant, tool) and content. The orchestration layer reads these to build inference prompts.</dd>
 
   <dt>Mode</dt>
-  <dd>Selects the orchestration pattern: <code>chat</code> routes to <a href="glossary.html#term-agent-loop">AgentLoop</a>, <code>structured</code> to <a href="glossary.html#term-specialized-loop">SpecializedLoop</a>, <code>plan</code> to <a href="glossary.html#term-plan-executor">PlanExecutor</a>, <code>redundant</code> to <a href="glossary.html#term-redundant-loop">RedundantLoop</a>.</dd>
+  <dd>Selects the orchestration pattern: <code>chat</code> routes to <a href="orchestration.html#agentloop">AgentLoop</a>, <code>structured</code> to <a href="orchestration.html#specializedloop">SpecializedLoop</a>, <code>plan</code> to <a href="orchestration.html#planexecutor">PlanExecutor</a>, <code>redundant</code> to <a href="orchestration.html#redundantloop">RedundantLoop</a>.</dd>
 
   <dt>Hints</dt>
   <dd>Optional execution tuning. See <a href="#execution-hints">ExecutionHints</a> below. Adapters pass these through without interpretation.</dd>
@@ -115,9 +114,6 @@
 
   <dt>Tools</dt>
   <dd>Whitelist of <a href="tools.html">tool</a> names the request is allowed to use. Empty means all registered tools are available. This enables per-request capability scoping.</dd>
-
-  <dt>Context</dt>
-  <dd>Configuration for the <a href="retrieval.html">context provider</a> - which retriever to use, how many chunks to fetch, relevance thresholds.</dd>
 </dl>
 
 <!-- ================================================================== -->
@@ -133,12 +129,11 @@
     <span class="comment">// Output</span>
     Content         string              <span class="comment">// Text response</span>
     StructuredOutput any                <span class="comment">// Parsed output when schema provided</span>
-    ToolCallsMade   []ToolCallRecord    <span class="comment">// Log of tool invocations during execution</span>
+    ToolCallsMade   []core.ToolCall     <span class="comment">// Log of tool invocations during execution</span>
 
     <span class="comment">// Quality</span>
     Confidence      *float64            <span class="comment">// Optional [0..1] confidence score</span>
     ConfidenceSource string             <span class="comment">// "voting" | "validation" | "retrieval"</span>
-    ValidationResult *ValidationSummary
 
     <span class="comment">// Usage</span>
     TokenUsage      core.TokenUsage
@@ -161,7 +156,7 @@
   <dd>Ordered log of every tool invocation that occurred during execution. Each record includes tool name, arguments, result, and duration. Useful for auditing and debugging.</dd>
 
   <dt>Confidence</dt>
-  <dd>Optional score in [0..1] range. Populated by <a href="glossary.html#term-redundant-loop">RedundantLoop</a> (voting consensus), validation (rule pass rate), or retrieval (relevance score).</dd>
+  <dd>Optional score in [0..1] range. Populated by <a href="orchestration.html#redundantloop">RedundantLoop</a> (voting consensus), validation (rule pass rate), or retrieval (relevance score).</dd>
 
   <dt>ConfidenceSource</dt>
   <dd>Identifies which mechanism produced the Confidence value: <code>"voting"</code>, <code>"validation"</code>, or <code>"retrieval"</code>.</dd>
@@ -284,22 +279,22 @@
   </thead>
   <tbody>
     <tr>
-      <td><a href="orchestration.html#agent-loop">AgentLoop</a></td>
+      <td><a href="orchestration.html#agentloop">AgentLoop</a></td>
       <td><code>chat</code></td>
       <td>Content, ToolCallsMade, TokenUsage</td>
     </tr>
     <tr>
-      <td><a href="orchestration.html#specialized-loop">SpecializedLoop</a></td>
+      <td><a href="orchestration.html#specializedloop">SpecializedLoop</a></td>
       <td><code>structured</code></td>
       <td>Content, StructuredOutput, ValidationResult, TokenUsage</td>
     </tr>
     <tr>
-      <td><a href="orchestration.html#plan-executor">PlanExecutor</a></td>
+      <td><a href="orchestration.html#planexecutor">PlanExecutor</a></td>
       <td><code>plan</code></td>
       <td>Content, StructuredOutput (per step), ToolCallsMade, TokenUsage</td>
     </tr>
     <tr>
-      <td><a href="orchestration.html#redundant-loop">RedundantLoop</a></td>
+      <td><a href="orchestration.html#redundantloop">RedundantLoop</a></td>
       <td><code>redundant</code></td>
       <td>Content, StructuredOutput, Confidence, ConfidenceSource, TokenUsage</td>
     </tr>
@@ -429,28 +424,28 @@
   </thead>
   <tbody>
     <tr>
-      <td><a href="orchestration.html#agent-loop">AgentLoop</a></td>
+      <td><a href="orchestration.html#agentloop">AgentLoop</a></td>
       <td>INIT -> PREPARE -> EXECUTE -> COMPLETE</td>
       <td>EXECUTE -> VALIDATE -> EXECUTE (per turn)</td>
       <td>Yes, within EXECUTE</td>
       <td>Multi-turn: EXECUTE/VALIDATE cycle repeats per user turn</td>
     </tr>
     <tr>
-      <td><a href="orchestration.html#specialized-loop">SpecializedLoop</a></td>
+      <td><a href="orchestration.html#specializedloop">SpecializedLoop</a></td>
       <td>INIT -> PREPARE -> EXECUTE -> VALIDATE -> COMPLETE</td>
       <td>VALIDATE -> EXECUTE</td>
       <td>No</td>
       <td>Single-shot with validation</td>
     </tr>
     <tr>
-      <td><a href="orchestration.html#plan-executor">PlanExecutor</a></td>
+      <td><a href="orchestration.html#planexecutor">PlanExecutor</a></td>
       <td>INIT -> PLAN -> PREPARE -> EXECUTE -> VALIDATE -> COMPLETE</td>
       <td>Per-step: EXECUTE -> VALIDATE -> EXECUTE</td>
       <td>Per step</td>
       <td>EXECUTE contains sub-cycles for each Step</td>
     </tr>
     <tr>
-      <td><a href="orchestration.html#redundant-loop">RedundantLoop</a></td>
+      <td><a href="orchestration.html#redundantloop">RedundantLoop</a></td>
       <td>INIT -> PREPARE -> EXECUTE -> VALIDATE -> COMPLETE</td>
       <td>N/A (voting replaces retry)</td>
       <td>No</td>
@@ -463,7 +458,7 @@
 <h2 id="failure-taxonomy">3. Failure Taxonomy</h2>
 
 <p>
-  Every error in pagantic belongs to exactly one <a href="glossary.html#term-failure-category">FailureCategory</a>.
+  Every error in pagantic belongs to exactly one <a href="glossary.html#failure-categories">FailureCategory</a>.
   Categories determine retry eligibility, recovery path, and which layer emitted the error.
 </p>
 
@@ -608,7 +603,7 @@
   <dd>Loop exceeded its maximum iteration count without reaching a terminal condition.</dd>
 
   <dt><code>ORCHESTRATION_NO_CONSENSUS</code></dt>
-  <dd><a href="glossary.html#term-redundant-loop">RedundantLoop</a> voting could not reach consensus across replicas.</dd>
+  <dd><a href="orchestration.html#redundantloop">RedundantLoop</a> voting could not reach consensus across replicas.</dd>
 </dl>
 
 <h3>ConfigurationFailure</h3>
@@ -654,22 +649,22 @@
   </thead>
   <tbody>
     <tr>
-      <td><a href="orchestration.html#agent-loop">AgentLoop</a></td>
+      <td><a href="orchestration.html#agentloop">AgentLoop</a></td>
       <td>InferenceFailure, ToolFailure, Cancellation</td>
       <td>ToolFailure (retry tool call)</td>
     </tr>
     <tr>
-      <td><a href="orchestration.html#specialized-loop">SpecializedLoop</a></td>
+      <td><a href="orchestration.html#specializedloop">SpecializedLoop</a></td>
       <td>InferenceFailure, ConstraintFailure, ValidationFailure, Cancellation</td>
       <td>ConstraintFailure (repair), ValidationFailure (retry)</td>
     </tr>
     <tr>
-      <td><a href="orchestration.html#plan-executor">PlanExecutor</a></td>
+      <td><a href="orchestration.html#planexecutor">PlanExecutor</a></td>
       <td>All categories</td>
       <td>ConstraintFailure, ValidationFailure (per step), ToolFailure (if step uses tools)</td>
     </tr>
     <tr>
-      <td><a href="orchestration.html#redundant-loop">RedundantLoop</a></td>
+      <td><a href="orchestration.html#redundantloop">RedundantLoop</a></td>
       <td>InferenceFailure, ConstraintFailure, OrchestrationFailure, Cancellation</td>
       <td>InferenceFailure (other replicas succeed), ConstraintFailure (repair per replica)</td>
     </tr>
@@ -801,7 +796,7 @@ ToolEndEvent {
 <h2 id="planning-contract">5. Planning Contract</h2>
 
 <p>
-  <a href="glossary.html#term-plan-executor">PlanExecutor</a> is the executor of a plan, not the creator.
+  <a href="orchestration.html#planexecutor">PlanExecutor</a> is the executor of a plan, not the creator.
   Plans are produced by a Planner (or manually authored) and handed to PlanExecutor for execution.
 </p>
 

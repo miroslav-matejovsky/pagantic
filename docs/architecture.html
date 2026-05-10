@@ -896,15 +896,16 @@ CorrelationContext {
 
 <pre><code><span class="comment">// Structural typing interface consumed by orchestrate:</span>
 type PromptProvider interface {
-    BuildSystemPrompt(ctx context.Context, req SystemRequest) (core.Message, error)
+    BuildSystemPrompt() (core.Message, error)
 }
 </code></pre>
 
 <p>
-  The prompt layer supplies implementations (<code>SystemPrompt</code>,
-  <code>InstructionSet</code>, <code>Template</code>) that satisfy this interface
-  without importing orchestrate. This follows the same structural typing pattern used
-  for <a href="#structural-typing">ContextProvider and CandidateReranker</a>.
+  Prompt layer implementations that expose <code>BuildSystemPrompt() (core.Message, error)</code>
+  satisfy this interface without importing orchestrate - same structural typing pattern as
+  <a href="#structural-typing">ContextProvider and CandidateReranker</a>. The existing
+  <code>SystemPrompt.Build()</code> and <code>Template.Render()</code> use different
+  signatures; production code bridges between them or implements the interface directly.
 </p>
 
 <h3>Context Placement Policy</h3>

@@ -29,11 +29,12 @@
 // plans. This separation is an explicit boundary. PlanPolicy constrains
 // plan construction. PlanTrace records creation metadata.
 //
-// # Execution IR
+// # Execution IR (Planned)
 //
-// StepInput and StepOutput provide typed wrappers for data crossing step
-// boundaries inside PlanExecutor. CandidateIR is the canonical cross-step
-// representation unifying context.Chunk and rerank.Candidate.
+// StepInput, StepOutput, CandidateIR, and ContextIR are planned IR types.
+// Current PlanExecutor chains steps using raw any (Step.Input/Output fields).
+// These typed wrappers exist for optional use by callers that want typed
+// step boundaries; PlanExecutor itself does not enforce them.
 //
 // Key types:
 //   - AgentLoop
@@ -73,7 +74,8 @@
 // CandidateReranker follows the same structural typing pattern. The
 // rerank.Reranker type satisfies it without importing the rerank package.
 //
-// PromptProvider follows the same structural typing pattern. The
-// prompt.SystemPrompt and prompt.Template types can satisfy it without
-// importing orchestrate.
+// PromptProvider follows the same structural typing pattern. Prompt layer
+// implementations must expose BuildSystemPrompt() (core.Message, error).
+// The existing prompt.SystemPrompt.Build() and prompt.Template.Render()
+// methods do not satisfy this interface; adapter code bridges between them.
 package orchestrate

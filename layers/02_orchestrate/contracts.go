@@ -127,8 +127,10 @@ type OutputContract struct {
 }
 
 // PromptProvider builds system prompts for orchestration patterns.
-// The prompt layer's SystemPrompt and Template types can satisfy this
-// interface via Go structural typing without importing orchestrate.
+// Implementations live in the prompt layer and satisfy this interface
+// without importing orchestrate (structural typing - same pattern as
+// ContextProvider and CandidateReranker). Prompt types must implement
+// BuildSystemPrompt to participate in this contract.
 type PromptProvider interface {
 	BuildSystemPrompt() (core.Message, error)
 }

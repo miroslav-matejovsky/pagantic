@@ -9,10 +9,10 @@
 //
 // # PromptProvider Pattern
 //
-// Orchestrate defines a PromptProvider interface that prompt layer types can
-// satisfy via Go structural typing (same pattern as ContextProvider and
-// CandidateReranker). This allows orchestration to consume structured prompts
-// without the prompt layer importing orchestrate. Raw SystemPrompt strings
-// remain a convenience default; PromptProvider is the primary mechanism
-// for production use.
+// Orchestrate defines a PromptProvider interface (BuildSystemPrompt() returning
+// core.Message). Prompt layer implementations can satisfy this interface via
+// Go structural typing without importing orchestrate - same pattern as
+// ContextProvider and CandidateReranker. The current SystemPrompt.Build()
+// and Template.Render() methods use different signatures; production adapters
+// bridge between them or implement PromptProvider directly.
 package prompt

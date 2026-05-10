@@ -681,11 +681,12 @@ contextProvider := &amp;pctx.ContextBuilder{
 </ul>
 
 <div class="info">
-  <strong>Execution IR.</strong> When candidates cross step boundaries in PlanExecutor,
-  they use <a href="architecture.html#execution-ir">CandidateIR</a> which carries
-  the same score semantics. Conversion between <code>context.Chunk</code>,
-  <code>rerank.Candidate</code>, and <code>CandidateIR</code> happens at integration
-  sites in user code.
+  <strong>Execution IR (Planned).</strong> <a href="architecture.html#execution-ir">CandidateIR</a>
+  is a planned typed wrapper for passing candidates across PlanExecutor step boundaries.
+  Current PlanExecutor chains steps via raw <code>any</code> (Step.Input/Output fields).
+  CandidateIR is available for optional use when callers want typed step boundaries;
+  conversion between <code>context.Chunk</code>, <code>rerank.Candidate</code>, and
+  <code>CandidateIR</code> happens in caller code.
 </div>
 
 <!-- ================================================================== -->

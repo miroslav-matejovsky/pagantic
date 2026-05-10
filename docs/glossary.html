@@ -101,13 +101,13 @@
   <dd>Per-request context carrying immutable ids (request_id, session_id) plus mutable metadata (attempts, selected tools, candidates). See <a href="contracts.html#execution-context">Contracts</a>.</dd>
 
   <dt id="execution-plan">ExecutionPlan</dt>
-  <dd>Ordered sequence of Steps defining a multi-step pipeline. Created by a Planner or manually authored. Executed by PlanExecutor. See <a href="orchestration.html#plan-executor">Orchestration</a>.</dd>
+  <dd>Ordered sequence of Steps defining a multi-step pipeline. Created by a Planner or manually authored. Executed by PlanExecutor. See <a href="orchestration.html#planexecutor">Orchestration</a>.</dd>
 
   <dt id="step">Step</dt>
   <dd>Single unit of work in an ExecutionPlan. Has a type, handler, name, and input/output shape.</dd>
 
   <dt id="step-handler">StepHandler</dt>
-  <dd>Function that executes a Step, receiving StepInput and producing StepOutput.</dd>
+  <dd>Function with signature func(ctx context.Context, step Step) (Step, error). Registered in PlanExecutor by step type.</dd>
 </dl>
 
 <!-- ================================================================== -->
@@ -267,7 +267,7 @@
 
 <dl>
   <dt id="prompt-provider">PromptProvider</dt>
-  <dd>Structural typing interface for prompt assembly: BuildSystemPrompt(ctx, SystemRequest) produces system message. Owned by: prompt layer (L08).</dd>
+  <dd>Interface for prompt assembly: BuildSystemPrompt() (core.Message, error). Implementations live in the prompt layer and satisfy this without importing orchestrate. Owned by: orchestrate layer (L02).</dd>
 
   <dt id="template">Template</dt>
   <dd>Parameterized prompt template with variable substitution. Owned by: prompt layer (L08).</dd>
