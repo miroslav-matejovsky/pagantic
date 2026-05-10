@@ -40,6 +40,7 @@ nav {
 nav .logo { font-weight: 700; font-size: 1.25rem; color: #fff; }
 nav a { color: var(--nav-fg); font-size: 0.875rem; }
 nav a:hover { color: #fff; text-decoration: none; }
+nav a.github-link { margin-left: auto; }
 .container { max-width: 960px; margin: 0 auto; padding: 2rem; }
 h1 { font-size: 2.5rem; margin-bottom: 0.5rem; }
 h2 { font-size: 1.75rem; margin-top: 3rem; margin-bottom: 1rem; padding-bottom: 0.5rem; border-bottom: 2px solid var(--border); }
