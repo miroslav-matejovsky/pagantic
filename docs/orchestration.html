@@ -1,0 +1,1006 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Orchestration Patterns - pagantic</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<nav>
+  <a href="index.html" class="logo">pagantic</a>
+  <a href="architecture.html">Architecture</a>
+  <a href="orchestration.html">Orchestration</a>
+  <a href="retrieval.html">Retrieval</a>
+  <a href="tools.html">Tools</a>
+  <a href="constraints.html">Constraints</a>
+  <a href="https://github.com/miroslav-matejovsky/pagantic" target="_blank" style="margin-left: auto;">GitHub</a>
+</nav>
+
+<div class="container">
+
+  <div class="breadcrumb">
+    <a href="index.html">Home</a> / <strong>Orchestration Patterns</strong>
+  </div>
+
+  <div class="page-header">
+    <h1>Orchestration Patterns</h1>
+    <p>Layer 2 control loops - driving multi-step inference, tool calls, and structured output.</p>
+  </div>
+
+  <!-- Table of Contents -->
+  <div class="toc">
+    <h4>Table of Contents</h4>
+    <ul>
+      <li><a href="#overview">Overview</a></li>
+      <li>
+        <a href="#agentloop">1. AgentLoop - Stateful Multi-Turn Chat</a>
+        <ul>
+          <li><a href="#agentloop-internals">How It Works Internally</a></li>
+          <li><a href="#agentloop-config">Configuration</a></li>
+          <li><a href="#agentloop-usage">Usage</a></li>
+          <li><a href="#agentloop-ephemeral">Ephemeral Context Injection</a></li>
+          <li><a href="#agentloop-structured">ChatStructured - Schema-Constrained Output</a></li>
+        </ul>
+      </li>
+      <li>
+        <a href="#specializedloop">2. SpecializedLoop - Stateless Single-Shot</a>
+        <ul>
+          <li><a href="#specializedloop-internals">How It Works Internally</a></li>
+          <li><a href="#specializedloop-config">Configuration</a></li>
+          <li><a href="#specializedloop-usage">Usage</a></li>
+          <li><a href="#specializedloop-when">When to Choose SpecializedLoop</a></li>
+        </ul>
+      </li>
+      <li>
+        <a href="#planexecutor">3. PlanExecutor - Multi-Step Pipeline</a>
+        <ul>
+          <li><a href="#planexecutor-types">Core Types</a></li>
+          <li><a href="#planexecutor-handlers">Built-in Handlers</a></li>
+          <li><a href="#planexecutor-usage">Usage - RAG Pipeline</a></li>
+          <li><a href="#planexecutor-custom">Custom Handlers</a></li>
+        </ul>
+      </li>
+      <li>
+        <a href="#redundantloop">4. RedundantLoop - N-Version Inference with Voting</a>
+        <ul>
+          <li><a href="#redundantloop-internals">How It Works Internally</a></li>
+          <li><a href="#redundantloop-voting">Voting Strategies</a></li>
+          <li><a href="#redundantloop-custom-voting">Custom Voting</a></li>
+          <li><a href="#redundantloop-usage">Usage</a></li>
+          <li><a href="#redundantloop-when">When to Use</a></li>
+        </ul>
+      </li>
+      <li><a href="#choosing">5. Choosing the Right Pattern</a></li>
+      <li><a href="#composing">6. Composing Patterns</a></li>
+    </ul>
+  </div>
+
+  <!-- Overview -->
+  <h2 id="overview">Overview</h2>
+
+  <p>
+    The <code>orchestrate</code> package (layer 2) drives work across many inference steps.
+    It breaks requests into steps, routes work across subsystems, enforces ordering and state transitions,
+    and manages retries, branching, and tool loops. A pagantic system is not one inference call -
+    it is a controlled multi-step loop.
+  </p>
+
+  <p>Four orchestration patterns serve different use cases:</p>
+
+  <table>
+    <thead>
+      <tr><th>Pattern</th><th>State</th><th>Purpose</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><strong>AgentLoop</strong></td><td>Stateful</td><td>Multi-turn conversational agent with tool loop</td></tr>
+      <tr><td><strong>SpecializedLoop</strong></td><td>Stateless</td><td>Single-shot structured output extraction</td></tr>
+      <tr><td><strong>PlanExecutor</strong></td><td>Stateless</td><td>Multi-step typed pipeline (retrieve, rerank, infer, validate)</td></tr>
+      <tr><td><strong>RedundantLoop</strong></td><td>Stateless</td><td>N-version inference with voting for reliability</td></tr>
+    </tbody>
+  </table>
+
+  <div class="info">
+    <strong>Import path:</strong> All types live in
+    <code>github.com/miroslav-matejovsky/pagantic/layers/02_orchestrate</code>,
+    typically imported as <code>orchestrate</code>.
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- AgentLoop -->
+  <!-- ============================================================ -->
+  <h2 id="agentloop">1. AgentLoop - Stateful Multi-Turn Chat</h2>
+
+  <p>
+    The primary pattern for conversational agents. <code>AgentLoop</code> maintains message
+    history across <code>Chat()</code> calls using an internal <code>ConversationBuffer</code>.
+    Each call appends user message, runs tool loops if needed, and stores the final assistant
+    response - building up a full conversation over time.
+  </p>
+
+  <h3 id="agentloop-internals">How It Works Internally</h3>
+
+  <p>Every <code>Chat()</code> call follows this sequence:</p>
+
+  <ol>
+    <li>User message is added to the internal <code>ConversationBuffer</code>.</li>
+    <li>If a <code>ContextProvider</code> is set, context is retrieved ephemerally (not stored in history).</li>
+    <li>Messages + tool definitions are sent to the inference engine.</li>
+    <li>If the response contains tool calls: execute each tool, append results to memory, loop back to step 3.</li>
+    <li>If the response is final text: store in history, return to caller.</li>
+    <li><code>MaxToolIterations</code> prevents infinite tool loops (default: 20).</li>
+  </ol>
+
+  <div class="arch-diagram">
+Chat(userMessage)
+    |
+    v
+[1] memory.Append(userMessage)
+    |
+    v
+[2] fetchContext(query) -----> ContextProvider.Build()
+    |                              |
+    |   ctxMsgs (ephemeral)  <-----+
+    v
+[3] engine.Infer(messages + ctxMsgs + tools)
+    |
+    +----> tool calls? ----YES----> [4] execute tools
+    |                                    append results
+    |                                    loop to [3]
+    NO
+    |
+    v
+[5] storeResult(assistant response)
+    |
+    v
+    return *inference.Result</div>
+
+  <h3 id="agentloop-config">Configuration</h3>
+
+  <pre><code>type LoopConfig struct {
+    Engine            inference.Engine         <span class="comment">// required - the LLM backend</span>
+    Tools             *tool.Registry           <span class="comment">// optional - enables tool calls</span>
+    SystemPrompt      string                   <span class="comment">// prepended as system message</span>
+    Grammar           string                   <span class="comment">// GBNF grammar; only for ChatStructured, not Chat</span>
+    MaxTokens         int                      <span class="comment">// default 2048</span>
+    MaxToolIterations int                      <span class="comment">// default 20; max tool-call loop rounds</span>
+    Stream            *inference.StreamHandler  <span class="comment">// streaming callbacks for token-by-token output</span>
+    OnToolResult      func(name, output string) <span class="comment">// hook called after each tool execution</span>
+    Observer          observe.EventLog          <span class="comment">// event recording for tracing/debugging</span>
+    ContextProvider   ContextProvider           <span class="comment">// optional - per-turn context retrieval</span>
+}</code></pre>
+
+  <table>
+    <thead>
+      <tr><th>Field</th><th>Default</th><th>Notes</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>Engine</code></td><td>-</td><td>Required. Any type satisfying <code>inference.Engine</code>.</td></tr>
+      <tr><td><code>Tools</code></td><td><code>nil</code></td><td>When nil, model cannot make tool calls.</td></tr>
+      <tr><td><code>SystemPrompt</code></td><td><code>""</code></td><td>Appended as first message in buffer at construction time.</td></tr>
+      <tr><td><code>Grammar</code></td><td><code>""</code></td><td>GBNF grammar string. Only applied in <code>ChatStructured</code>.</td></tr>
+      <tr><td><code>MaxTokens</code></td><td><code>2048</code></td><td>Maximum tokens per inference call.</td></tr>
+      <tr><td><code>MaxToolIterations</code></td><td><code>20</code></td><td>Safety limit on tool-call loop rounds.</td></tr>
+      <tr><td><code>Stream</code></td><td><code>nil</code></td><td>Passed to engine via <code>WithStreamHandler</code> if engine supports it.</td></tr>
+      <tr><td><code>OnToolResult</code></td><td><code>nil</code></td><td>Called with tool name and output string after each execution.</td></tr>
+      <tr><td><code>Observer</code></td><td><code>nil</code></td><td>Records events for "infer", "tool", and "context" actions.</td></tr>
+      <tr><td><code>ContextProvider</code></td><td><code>nil</code></td><td>Retrieves context messages per turn. See <a href="#agentloop-ephemeral">Ephemeral Context</a>.</td></tr>
+    </tbody>
+  </table>
+
+  <h3 id="agentloop-usage">Usage</h3>
+
+  <pre><code><span class="comment">// Create agent with tools and context</span>
+agent := orchestrate.NewAgentLoop(orchestrate.LoopConfig{
+    Engine:          engine,
+    Tools:           tool.NewRegistry(&searchTool{}, &calcTool{}),
+    SystemPrompt:    "You are a helpful assistant with access to tools.",
+    ContextProvider: contextBuilder,  <span class="comment">// satisfies ContextProvider interface</span>
+    Stream:          tui.TerminalRenderer(os.Stdout),
+    Observer:        &observe.InMemoryEventLog{},
+})
+
+<span class="comment">// Multi-turn conversation - state accumulates across calls</span>
+result1, err := agent.Chat(ctx, "What is the weather in Paris?")
+<span class="comment">// agent uses search tool, returns answer</span>
+
+result2, err := agent.Chat(ctx, "How about London?")
+<span class="comment">// agent remembers Paris was discussed, asks about London</span>
+
+<span class="comment">// Access full conversation history</span>
+messages := agent.Messages()
+<span class="comment">// [system, user("Paris?"), assistant("Paris is..."), user("London?"), assistant("London is...")]</span></code></pre>
+
+  <div class="tip">
+    <strong>Tip:</strong> The <code>Messages()</code> method returns a copy of conversation state.
+    Use it to inspect history, serialize for persistence, or pass to other systems.
+  </div>
+
+  <h3 id="agentloop-ephemeral">Ephemeral Context Injection</h3>
+
+  <p>
+    Context retrieved via <code>ContextProvider</code> is <em>ephemeral</em> - it is injected into
+    the inference request but <strong>never stored</strong> in the conversation buffer. This prevents
+    retrieved context from accumulating across turns, which would bloat the context window and
+    potentially confuse the model with stale information.
+  </p>
+
+  <pre><code><span class="comment">// Internally, AgentLoop does this each Chat() call:</span>
+
+<span class="comment">// 1. Retrieve fresh context for the current user message</span>
+ctxMsgs := al.fetchContext(ctx, userMessage)
+
+<span class="comment">// 2. Store user message in persistent memory</span>
+al.memory.Append(core.NewUserMessage(userMessage))
+
+<span class="comment">// 3. Build request: memory + ephemeral context injected before user message</span>
+requestMsgs := al.memoryWithEphemeralContext(ctxMsgs)
+<span class="comment">// ctxMsgs appear in the request but are NOT in al.memory</span>
+
+<span class="comment">// 4. After inference, storeResult rebuilds memory from the base snapshot,</span>
+<span class="comment">//    ignoring ephemeral context entirely</span>
+al.storeResult(memBase, result)</code></pre>
+
+  <div class="note">
+    <strong>Note:</strong> If <code>ContextProvider.Build()</code> returns an error, the agent
+    degrades gracefully - it proceeds without context and records the error via the Observer.
+    Context retrieval never blocks or fails the inference call.
+  </div>
+
+  <p>
+    The <code>memoryWithEphemeralContext</code> method inserts context messages just before the
+    last message (the user message) in the buffer. This placement ensures the model sees relevant
+    context immediately before the user query, matching the standard RAG pattern.
+  </p>
+
+  <h3 id="agentloop-structured">ChatStructured - Schema-Constrained Output</h3>
+
+  <p>
+    <code>ChatStructured</code> forces the model to produce JSON conforming to a given schema.
+    It applies several layers of constraint enforcement:
+  </p>
+
+  <ol>
+    <li>Sets temperature to <strong>0.3</strong> for more deterministic output.</li>
+    <li>Disables thinking mode (<code>enable_thinking: false</code>).</li>
+    <li>Applies GBNF grammar if configured (decoder-level constraint).</li>
+    <li>Validates output against the provided schema.</li>
+    <li>Repairs broken JSON (missing braces, unescaped quotes) via <code>constraint.RepairJSON</code>.</li>
+    <li>Normalizes enum values to canonical case via <code>constraint.NormalizeEnumValues</code>.</li>
+  </ol>
+
+  <pre><code>schema := core.Schema{
+    Type: "object",
+    Properties: map[string]core.Schema{
+        "sentiment":  {Type: "string", Enum: []string{"positive", "negative", "neutral"}},
+        "confidence": {Type: "number"},
+    },
+    Required: []string{"sentiment", "confidence"},
+}
+
+result, err := agent.ChatStructured(ctx, "Analyze: great product!", schema)
+<span class="comment">// result.Content is valid JSON: {"sentiment":"positive","confidence":0.95}</span></code></pre>
+
+  <div class="info">
+    <strong>Validation pipeline:</strong> Output goes through
+    <code>json.Valid</code> check, then <code>RepairJSON</code> if invalid, then
+    <code>NormalizeEnumValues</code>, and finally <code>SchemaValidator</code>. Each step is
+    applied only when needed. The <code>constraint</code> package (layer 5) provides all repair
+    and validation logic.
+  </div>
+
+  <div class="note">
+    <strong>Note:</strong> The <code>Grammar</code> field in <code>LoopConfig</code> is only
+    applied in <code>ChatStructured</code>, never in <code>Chat</code>. This is intentional -
+    GBNF grammars constrain output format, which only makes sense for structured extraction.
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- SpecializedLoop -->
+  <!-- ============================================================ -->
+  <h2 id="specializedloop">2. SpecializedLoop - Stateless Single-Shot</h2>
+
+  <p>
+    For one-off structured output tasks. <code>SpecializedLoop</code> creates a fresh
+    <code>AgentLoop</code> per <code>Call()</code> - no state accumulates between calls.
+    Every invocation starts with a clean slate.
+  </p>
+
+  <h3 id="specializedloop-internals">How It Works Internally</h3>
+
+  <ol>
+    <li>Creates a fresh inner <code>AgentLoop</code> (no history).</li>
+    <li>If <code>ContextProvider</code> is set: retrieves context using the original prompt, injects it directly into the inner loop via <code>injectContext()</code>.</li>
+    <li>If <code>Tools</code> are set: runs <code>Chat(prompt)</code> first (tool phase), then <code>ChatStructured(phase2Prompt, schema)</code>.</li>
+    <li>If no <code>Tools</code>: runs <code>ChatStructured(prompt, schema)</code> directly.</li>
+    <li>Returns the structured result.</li>
+  </ol>
+
+  <div class="arch-diagram">
+Call(prompt)
+    |
+    v
+[1] inner = NewAgentLoop(fresh config)
+    |
+    v
+[2] ContextProvider? ----YES----> Build(ctx, prompt)
+    |                                  |
+    |   inner.injectContext(msgs) <-----+
+    v
+[3] Tools configured?
+    |         |
+   YES        NO
+    |         |
+    v         v
+  Phase 1:   ChatStructured(prompt, schema)
+  Chat(prompt)         |
+    |                  v
+    v                return result
+  Phase 2:
+  ChatStructured("Produce your structured output now.", schema)
+    |
+    v
+  return result</div>
+
+  <div class="tip">
+    <strong>Two-phase execution with tools:</strong> When tools are configured, phase 1 lets the model
+    gather information via tool calls. Phase 2 asks for the final structured output. The hardcoded
+    phase 2 prompt is <code>"Produce your structured output now."</code>
+  </div>
+
+  <div class="info">
+    <strong>Context retrieval detail:</strong> Context is retrieved using the <em>original prompt</em>,
+    not the phase 2 prompt. This ensures good retrieval quality - the hardcoded
+    phase 2 prompt would produce poor retrieval results.
+  </div>
+
+  <h3 id="specializedloop-config">Configuration</h3>
+
+  <pre><code>type SpecializedConfig struct {
+    Engine          inference.Engine    <span class="comment">// required - the LLM backend</span>
+    Tools           *tool.Registry      <span class="comment">// optional - enables two-phase execution</span>
+    SystemPrompt    string              <span class="comment">// system prompt for inner AgentLoop</span>
+    Schema          core.Schema         <span class="comment">// required - JSON schema for output</span>
+    Grammar         string              <span class="comment">// GBNF grammar; empty means none</span>
+    MaxTokens       int                 <span class="comment">// default 2048</span>
+    Stream          *inference.StreamHandler <span class="comment">// streaming callbacks</span>
+    Observer        observe.EventLog    <span class="comment">// event recording</span>
+    ContextProvider ContextProvider     <span class="comment">// optional - retrieves context using original prompt</span>
+}</code></pre>
+
+  <h3 id="specializedloop-usage">Usage</h3>
+
+  <pre><code><span class="comment">// Basic single-shot structured extraction</span>
+sl := orchestrate.NewSpecializedLoop(orchestrate.SpecializedConfig{
+    Engine:       engine,
+    SystemPrompt: "Analyze sentiment. Return structured JSON.",
+    Schema:       sentimentSchema,
+    Grammar:      `root ::= "{" ws "\"sentiment\"" ws ":" ws val ws "}"
+ws  ::= [ \t\n]*
+val ::= "\"positive\"" | "\"negative\"" | "\"neutral\""`,
+    Stream:       tui.TerminalRenderer(os.Stdout),
+})
+
+result, err := sl.Call(ctx, "I love this product!")
+<span class="comment">// result.Content: {"sentiment":"positive"}</span></code></pre>
+
+  <pre><code><span class="comment">// With tools - two-phase execution</span>
+sl := orchestrate.NewSpecializedLoop(orchestrate.SpecializedConfig{
+    Engine:       engine,
+    Tools:        tool.NewRegistry(&webSearch{}, &calculator{}),
+    SystemPrompt: "Research the topic, then produce a structured summary.",
+    Schema: core.Schema{
+        Type: "object",
+        Properties: map[string]core.Schema{
+            "summary": {Type: "string"},
+            "sources": {Type: "array", Items: &core.Schema{Type: "string"}},
+        },
+        Required: []string{"summary", "sources"},
+    },
+})
+
+result, err := sl.Call(ctx, "Latest advances in quantum computing")
+<span class="comment">// Phase 1: model calls webSearch tool to gather info</span>
+<span class="comment">// Phase 2: model produces structured JSON summary</span></code></pre>
+
+  <h3 id="specializedloop-when">When to Choose SpecializedLoop</h3>
+
+  <table>
+    <thead>
+      <tr><th>Use SpecializedLoop when...</th><th>Use AgentLoop instead when...</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Single-shot classification or extraction</td><td>Multi-turn conversation needed</td></tr>
+      <tr><td>Schema-constrained JSON output required</td><td>Free-form text responses needed</td></tr>
+      <tr><td>No state between calls</td><td>Conversation history matters</td></tr>
+      <tr><td>GBNF grammar enforcement needed</td><td>Grammar not needed for free chat</td></tr>
+      <tr><td>Tools + structured output in one call</td><td>Tool use without structured output</td></tr>
+    </tbody>
+  </table>
+
+  <!-- ============================================================ -->
+  <!-- PlanExecutor -->
+  <!-- ============================================================ -->
+  <h2 id="planexecutor">3. PlanExecutor - Multi-Step Pipeline</h2>
+
+  <p>
+    For complex workflows with typed steps. Each step has a type, handler, input, and output.
+    The output of step N automatically feeds as input to step N+1 (when step N+1 has nil Input).
+    This creates composable data pipelines for RAG, validation, and multi-stage inference.
+  </p>
+
+  <h3 id="planexecutor-types">Core Types</h3>
+
+  <pre><code><span class="comment">// StepType categorizes what kind of work a step performs</span>
+type StepType string
+
+const (
+    StepInfer    StepType = "infer"     <span class="comment">// runs model inference</span>
+    StepTool     StepType = "tool"      <span class="comment">// runs tool call</span>
+    StepRetrieve StepType = "retrieve"  <span class="comment">// retrieves context</span>
+    StepRerank   StepType = "rerank"    <span class="comment">// reranks candidates</span>
+    StepValidate StepType = "validate"  <span class="comment">// validates output</span>
+)
+
+<span class="comment">// Step is one unit of work in an execution plan</span>
+type Step struct {
+    Name   string   <span class="comment">// human-readable step name</span>
+    Type   StepType <span class="comment">// determines which handler runs this step</span>
+    Input  any      <span class="comment">// nil means use previous step's Output</span>
+    Output any      <span class="comment">// set by handler after execution</span>
+}
+
+<span class="comment">// ExecutionPlan is an ordered list of steps</span>
+type ExecutionPlan struct {
+    Steps []Step
+}
+
+<span class="comment">// StepHandler processes one step. Receives step with Input set,</span>
+<span class="comment">// returns step with Output set.</span>
+type StepHandler func(ctx context.Context, step Step) (Step, error)</code></pre>
+
+  <div class="info">
+    <strong>Auto-chaining:</strong> When a step's <code>Input</code> is <code>nil</code> and it is
+    not the first step, <code>PlanExecutor</code> automatically sets <code>Input</code> to the
+    previous step's <code>Output</code>. Set <code>Input</code> explicitly to override this behavior.
+  </div>
+
+  <h3 id="planexecutor-handlers">Built-in Handlers</h3>
+
+  <p>
+    Four built-in handler constructors cover common step types. Each accepts a dependency and
+    returns a <code>StepHandler</code>. All have nil guards - passing <code>nil</code> returns a
+    handler that immediately errors with a descriptive message.
+  </p>
+
+  <pre><code><span class="comment">// InferHandler - runs inference engine</span>
+<span class="comment">// Input: inference.Request | Output: *inference.Result</span>
+orchestrate.InferHandler(engine)
+
+<span class="comment">// RerankHandler - reranks candidates by relevance</span>
+<span class="comment">// Input: RerankInput | Output: []RerankCandidate</span>
+orchestrate.RerankHandler(reranker)
+
+<span class="comment">// RetrieveHandler - retrieves context for a query</span>
+<span class="comment">// Input: string (query) | Output: []core.Message</span>
+orchestrate.RetrieveHandler(contextProvider)
+
+<span class="comment">// ValidateHandler - validates output with a check function</span>
+<span class="comment">// Input: string | Output: string (passthrough if valid)</span>
+orchestrate.ValidateHandler(func(output string) error {
+    if output == "" {
+        return fmt.Errorf("empty output")
+    }
+    return nil
+})</code></pre>
+
+  <div class="note">
+    <strong>Nil guards:</strong> Every built-in handler constructor checks for nil dependencies.
+    <code>InferHandler(nil)</code> returns a handler that errors with
+    <code>"infer handler: nil engine"</code>. This fails fast at execution time with a clear message
+    rather than panicking with a nil pointer.
+  </div>
+
+  <h4>Rerank Types</h4>
+
+  <p>
+    The plan layer defines its own rerank types to avoid importing the rerank package directly.
+    This follows the same structural typing pattern as <code>ContextProvider</code>.
+  </p>
+
+  <pre><code><span class="comment">// RerankCandidate represents a scored item for plan-level reranking</span>
+type RerankCandidate struct {
+    Content  string
+    Score    float64
+    Source   string
+    Metadata map[string]any
+}
+
+<span class="comment">// RerankInput groups candidates with the original query</span>
+type RerankInput struct {
+    Query      string
+    Candidates []RerankCandidate
+}
+
+<span class="comment">// CandidateReranker scores and filters candidates</span>
+type CandidateReranker interface {
+    Rerank(ctx context.Context, input RerankInput) ([]RerankCandidate, error)
+}</code></pre>
+
+  <h3 id="planexecutor-usage">Usage - RAG Pipeline</h3>
+
+  <pre><code><span class="comment">// Define a retrieve -> rerank -> infer pipeline</span>
+plan := orchestrate.ExecutionPlan{
+    Steps: []orchestrate.Step{
+        {
+            Name:  "retrieve",
+            Type:  orchestrate.StepRetrieve,
+            Input: "How do interfaces work in Go?", <span class="comment">// explicit query string</span>
+        },
+        {
+            Name: "rerank",
+            Type: orchestrate.StepRerank,
+            <span class="comment">// Input: nil - auto-chained from retrieve Output</span>
+        },
+        {
+            Name: "infer",
+            Type: orchestrate.StepInfer,
+            <span class="comment">// Input: nil - auto-chained from rerank Output</span>
+        },
+    },
+}
+
+<span class="comment">// Create executor with handler for each step type</span>
+executor := orchestrate.NewPlanExecutor(map[orchestrate.StepType]orchestrate.StepHandler{
+    orchestrate.StepRetrieve: orchestrate.RetrieveHandler(contextProvider),
+    orchestrate.StepRerank:   orchestrate.RerankHandler(reranker),
+    orchestrate.StepInfer:    orchestrate.InferHandler(engine),
+})
+
+<span class="comment">// Execute the pipeline</span>
+results, err := executor.Execute(ctx, plan)
+if err != nil {
+    log.Fatal(err)
+}
+
+<span class="comment">// Access each step's output</span>
+retrievedMsgs := results[0].Output   <span class="comment">// []core.Message - retrieved chunks</span>
+rerankedItems := results[1].Output   <span class="comment">// []RerankCandidate - reranked candidates</span>
+inferResult   := results[2].Output   <span class="comment">// *inference.Result - final answer</span></code></pre>
+
+  <div class="tip">
+    <strong>Tip:</strong> <code>Execute</code> returns all completed steps even on error. If step 2
+    fails, you still get <code>results[0]</code> with the output from step 1. This enables partial
+    result inspection for debugging.
+  </div>
+
+  <h4>Pipeline with Validation</h4>
+
+  <pre><code><span class="comment">// Add validation as a final step</span>
+plan := orchestrate.ExecutionPlan{
+    Steps: []orchestrate.Step{
+        {Name: "retrieve", Type: orchestrate.StepRetrieve, Input: query},
+        {Name: "infer",    Type: orchestrate.StepInfer},
+        {Name: "validate", Type: orchestrate.StepValidate},
+    },
+}
+
+executor := orchestrate.NewPlanExecutor(map[orchestrate.StepType]orchestrate.StepHandler{
+    orchestrate.StepRetrieve: orchestrate.RetrieveHandler(contextProvider),
+    orchestrate.StepInfer:    orchestrate.InferHandler(engine),
+    orchestrate.StepValidate: orchestrate.ValidateHandler(func(output string) error {
+        if len(output) < 10 {
+            return fmt.Errorf("output too short: %d chars", len(output))
+        }
+        return nil
+    }),
+})</code></pre>
+
+  <h3 id="planexecutor-custom">Custom Handlers</h3>
+
+  <p>
+    Any function matching <code>func(ctx context.Context, step Step) (Step, error)</code> is a
+    valid <code>StepHandler</code>. This makes it easy to add custom processing steps.
+  </p>
+
+  <pre><code><span class="comment">// Custom handler that transforms text</span>
+summarizeHandler := func(ctx context.Context, step orchestrate.Step) (orchestrate.Step, error) {
+    input, ok := step.Input.(string)
+    if !ok {
+        return step, fmt.Errorf("summarize: expected string input, got %T", step.Input)
+    }
+
+    <span class="comment">// Custom processing logic</span>
+    summary := strings.TrimSpace(input)
+    if len(summary) > 500 {
+        summary = summary[:500] + "..."
+    }
+
+    step.Output = summary
+    return step, nil
+}
+
+<span class="comment">// Register custom step type</span>
+const StepSummarize orchestrate.StepType = "summarize"
+
+executor := orchestrate.NewPlanExecutor(map[orchestrate.StepType]orchestrate.StepHandler{
+    orchestrate.StepRetrieve: orchestrate.RetrieveHandler(provider),
+    StepSummarize:            summarizeHandler,
+    orchestrate.StepInfer:    orchestrate.InferHandler(engine),
+})</code></pre>
+
+  <div class="info">
+    <strong>Context cancellation:</strong> <code>PlanExecutor.Execute</code> checks
+    <code>ctx.Err()</code> before each step. If the context is cancelled or expired, execution
+    stops immediately and returns the completed steps so far.
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- RedundantLoop -->
+  <!-- ============================================================ -->
+  <h2 id="redundantloop">4. RedundantLoop - N-Version Inference with Voting</h2>
+
+  <p>
+    Runs the same inference N times and picks the best result by voting. Implements
+    <strong>Triple Modular Redundancy (TMR)</strong> / <strong>N-Version programming</strong>
+    for LLM output.
+  </p>
+
+  <p>
+    <strong>Why?</strong> LLM output is non-deterministic. Running the same prompt multiple times
+    and voting on results improves reliability, especially for classification and structured
+    extraction tasks where consistency matters more than creativity.
+  </p>
+
+  <h3 id="redundantloop-internals">How It Works Internally</h3>
+
+  <ol>
+    <li>Runs N independent <code>SpecializedLoop.Call()</code> invocations <strong>sequentially</strong> (to avoid GPU contention).</li>
+    <li>Collects all N outputs as candidate strings.</li>
+    <li>Applies the <code>VotingStrategy</code> to pick a winner.</li>
+    <li>Returns winner, confidence score, all candidates, and combined token usage.</li>
+  </ol>
+
+  <div class="arch-diagram">
+Call(prompt)
+    |
+    v
++---loop i = 0..N-1---+
+|                      |
+|  SpecializedLoop     |
+|  .Call(prompt)       |
+|       |              |
+|  candidates[i]       |
+|  totalUsage += usage |
+|                      |
++----------------------+
+    |
+    v
+VotingStrategy.Vote(candidates)
+    |
+    v
+RedundantResult{
+    Content:    winner,
+    Confidence: confidence,
+    Candidates: allCandidates,
+    Usage:      totalUsage,
+}</div>
+
+  <h4>RedundantResult</h4>
+
+  <pre><code>type RedundantResult struct {
+    Content    string          <span class="comment">// winning result chosen by voting strategy</span>
+    Confidence float64         <span class="comment">// how strongly voting supports the winner (0-1)</span>
+    Candidates []string        <span class="comment">// all N raw inference outputs</span>
+    Usage      core.TokenUsage <span class="comment">// combined token usage across all N calls</span>
+}</code></pre>
+
+  <h4>RedundantConfig</h4>
+
+  <pre><code>type RedundantConfig struct {
+    Engine       inference.Engine  <span class="comment">// required - the LLM backend</span>
+    SystemPrompt string            <span class="comment">// system prompt for each SpecializedLoop</span>
+    Schema       core.Schema       <span class="comment">// JSON schema for structured output</span>
+    Grammar      string            <span class="comment">// GBNF grammar; empty means none</span>
+    N            int               <span class="comment">// number of candidates; 0 defaults to 3</span>
+    Voting       VotingStrategy    <span class="comment">// nil defaults to MajorityVoting{}</span>
+    MaxTokens    int               <span class="comment">// default 2048</span>
+    Observer     observe.EventLog  <span class="comment">// event recording</span>
+}</code></pre>
+
+  <table>
+    <thead>
+      <tr><th>Field</th><th>Default</th><th>Notes</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>N</code></td><td><code>3</code></td><td>Number of inference runs. Higher N = more reliable but slower.</td></tr>
+      <tr><td><code>Voting</code></td><td><code>MajorityVoting{}</code></td><td>Strategy for picking winner from candidates.</td></tr>
+      <tr><td><code>MaxTokens</code></td><td><code>2048</code></td><td>Applied to each individual SpecializedLoop call.</td></tr>
+    </tbody>
+  </table>
+
+  <h3 id="redundantloop-voting">Voting Strategies</h3>
+
+  <h4>MajorityVoting</h4>
+
+  <p>
+    Picks the most frequent result. Confidence equals the fraction of candidates matching the winner.
+    Ties are broken by first-seen order (deterministic).
+  </p>
+
+  <pre><code>type MajorityVoting struct{}
+
+<span class="comment">// Example with 3 candidates:</span>
+<span class="comment">// candidates = ["positive", "positive", "negative"]</span>
+<span class="comment">// winner = "positive", confidence = 2/3 = 0.667</span>
+
+<span class="comment">// Example with 5 candidates and tie:</span>
+<span class="comment">// candidates = ["a", "b", "a", "b", "c"]</span>
+<span class="comment">// winner = "a" (first-seen with count 2), confidence = 2/5 = 0.4</span></code></pre>
+
+  <h4>UnanimityVoting</h4>
+
+  <p>
+    Requires <strong>all N candidates</strong> to match. Returns an error if any candidate differs.
+    Confidence is always 1.0 when successful.
+  </p>
+
+  <pre><code>type UnanimityVoting struct{}
+
+<span class="comment">// All match: winner = "positive", confidence = 1.0</span>
+<span class="comment">// Any differ: error "unanimity voting: candidate 2 differs from candidate 0"</span></code></pre>
+
+  <div class="note">
+    <strong>Note:</strong> Both strategies use exact string comparison. For structured output,
+    the JSON strings must match character-for-character. The combination of low temperature (0.3)
+    and schema constraints in <code>ChatStructured</code> helps ensure consistent output format.
+  </div>
+
+  <h3 id="redundantloop-custom-voting">Custom Voting</h3>
+
+  <p>
+    Implement the <code>VotingStrategy</code> interface to create custom voting logic.
+  </p>
+
+  <pre><code>type VotingStrategy interface {
+    Vote(candidates []string) (winner string, confidence float64, err error)
+}
+
+<span class="comment">// Example: weighted voting by JSON similarity</span>
+type SimilarityVoting struct{}
+
+func (s SimilarityVoting) Vote(candidates []string) (string, float64, error) {
+    if len(candidates) == 0 {
+        return "", 0, fmt.Errorf("no candidates")
+    }
+
+    <span class="comment">// Score each candidate by average similarity to all others</span>
+    bestIdx := 0
+    bestScore := 0.0
+    for i, a := range candidates {
+        score := 0.0
+        for j, b := range candidates {
+            if i != j {
+                score += similarity(a, b)
+            }
+        }
+        avg := score / float64(len(candidates)-1)
+        if avg > bestScore {
+            bestScore = avg
+            bestIdx = i
+        }
+    }
+    return candidates[bestIdx], bestScore, nil
+}</code></pre>
+
+  <h3 id="redundantloop-usage">Usage</h3>
+
+  <pre><code>rl := orchestrate.NewRedundantLoop(orchestrate.RedundantConfig{
+    Engine:       engine,
+    SystemPrompt: "Classify sentiment as positive, negative, or neutral.",
+    Schema: core.Schema{
+        Type: "object",
+        Properties: map[string]core.Schema{
+            "sentiment": {Type: "string", Enum: []string{"positive", "negative", "neutral"}},
+        },
+        Required: []string{"sentiment"},
+    },
+    N:       3,                              <span class="comment">// 3 candidates</span>
+    Voting:  orchestrate.MajorityVoting{},   <span class="comment">// majority wins</span>
+    Grammar: grammarStr,                     <span class="comment">// optional GBNF</span>
+})
+
+result, err := rl.Call(ctx, "I love this product!")
+if err != nil {
+    log.Fatal(err)
+}
+
+fmt.Printf("Winner: %s\n", result.Content)
+<span class="comment">// {"sentiment":"positive"}</span>
+
+fmt.Printf("Confidence: %.0f%%\n", result.Confidence*100)
+<span class="comment">// 100% (if all 3 agree)</span>
+
+fmt.Printf("Candidates: %v\n", result.Candidates)
+<span class="comment">// all 3 raw outputs</span>
+
+fmt.Printf("Total tokens: %d\n", result.Usage.OutputTokens)
+<span class="comment">// combined across all 3 calls</span></code></pre>
+
+  <div class="tip">
+    <strong>Tip:</strong> Token usage is combined across all N calls. <code>TokensPerSecond</code>
+    is averaged, and <code>ContextWindow</code> uses the maximum value seen.
+  </div>
+
+  <h3 id="redundantloop-when">When to Use</h3>
+
+  <ul>
+    <li><strong>Classification tasks</strong> where consistency matters.</li>
+    <li><strong>High-stakes extraction</strong> (financial, medical, legal) where errors are costly.</li>
+    <li><strong>When you need confidence scores</strong> to gate downstream actions.</li>
+    <li><strong>When latency is acceptable</strong> - each call is N times slower (sequential execution).</li>
+  </ul>
+
+  <div class="note">
+    <strong>Cost-latency tradeoff:</strong> With N=3, you use 3x the tokens and 3x the inference
+    time. Calls run sequentially to avoid GPU contention on local inference. For cloud APIs with
+    high concurrency, consider wrapping with parallel execution.
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- Choosing the Right Pattern -->
+  <!-- ============================================================ -->
+  <h2 id="choosing">5. Choosing the Right Pattern</h2>
+
+  <table>
+    <thead>
+      <tr><th>Need</th><th>Pattern</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Multi-turn chat with memory</td><td><code>AgentLoop</code></td></tr>
+      <tr><td>Single-shot structured output</td><td><code>SpecializedLoop</code></td></tr>
+      <tr><td>Multi-step pipeline (retrieve -> rerank -> infer)</td><td><code>PlanExecutor</code></td></tr>
+      <tr><td>High-reliability classification</td><td><code>RedundantLoop</code></td></tr>
+      <tr><td>Tools + structured output in one call</td><td><code>SpecializedLoop</code> (two-phase)</td></tr>
+      <tr><td>Custom step orchestration</td><td><code>PlanExecutor</code> with custom handlers</td></tr>
+      <tr><td>Free-form chat without tools</td><td><code>AgentLoop</code> (no Tools configured)</td></tr>
+      <tr><td>Confidence-gated decisions</td><td><code>RedundantLoop</code></td></tr>
+    </tbody>
+  </table>
+
+  <div class="arch-diagram">
+                       Need structured output?
+                       /                    \
+                     YES                     NO
+                     /                        \
+              Need multi-turn?          AgentLoop.Chat()
+              /            \
+            YES             NO
+            /                \
+   AgentLoop              Need reliability?
+   .ChatStructured()      /            \
+                        YES             NO
+                        /                \
+               RedundantLoop      SpecializedLoop
+                                        |
+                                  Need pipeline?
+                                  /            \
+                                YES             NO
+                                /                \
+                         PlanExecutor      SpecializedLoop.Call()</div>
+
+  <!-- ============================================================ -->
+  <!-- Composing Patterns -->
+  <!-- ============================================================ -->
+  <h2 id="composing">6. Composing Patterns</h2>
+
+  <p>
+    The four patterns are designed to compose. Each higher-level pattern builds on simpler ones:
+  </p>
+
+  <ul>
+    <li><strong>RedundantLoop</strong> uses <code>SpecializedLoop</code> internally for each of its N candidates.</li>
+    <li><strong>SpecializedLoop</strong> uses <code>AgentLoop</code> internally - it creates a fresh one per call.</li>
+    <li><strong>PlanExecutor</strong> can use any pattern as a step handler via custom <code>StepHandler</code> functions.</li>
+  </ul>
+
+  <div class="arch-diagram">
+Composition hierarchy:
+
+RedundantLoop
+  |-- SpecializedLoop (x N)
+        |-- AgentLoop (fresh per call)
+              |-- ConversationBuffer
+              |-- inference.Engine
+              |-- tool.Registry
+              |-- ContextProvider
+
+PlanExecutor
+  |-- StepHandler (per step type)
+        |-- can wrap AgentLoop, SpecializedLoop, or RedundantLoop</div>
+
+  <h3>Using Patterns as PlanExecutor Steps</h3>
+
+  <pre><code><span class="comment">// Wrap an AgentLoop as a StepHandler</span>
+agentHandler := func(ctx context.Context, step orchestrate.Step) (orchestrate.Step, error) {
+    prompt, ok := step.Input.(string)
+    if !ok {
+        return step, fmt.Errorf("expected string input")
+    }
+
+    agent := orchestrate.NewAgentLoop(orchestrate.LoopConfig{
+        Engine:       engine,
+        Tools:        tools,
+        SystemPrompt: "You are a research assistant.",
+    })
+
+    result, err := agent.Chat(ctx, prompt)
+    if err != nil {
+        return step, err
+    }
+
+    step.Output = result.Content
+    return step, nil
+}
+
+<span class="comment">// Wrap a RedundantLoop as a StepHandler</span>
+reliableClassifier := func(ctx context.Context, step orchestrate.Step) (orchestrate.Step, error) {
+    prompt, ok := step.Input.(string)
+    if !ok {
+        return step, fmt.Errorf("expected string input")
+    }
+
+    rl := orchestrate.NewRedundantLoop(orchestrate.RedundantConfig{
+        Engine: engine,
+        Schema: classificationSchema,
+        N:      3,
+    })
+
+    result, err := rl.Call(ctx, prompt)
+    if err != nil {
+        return step, err
+    }
+
+    step.Output = result.Content
+    return step, nil
+}
+
+<span class="comment">// Compose in a pipeline: research with tools, then reliably classify</span>
+const StepResearch orchestrate.StepType = "research"
+const StepClassify orchestrate.StepType = "classify"
+
+executor := orchestrate.NewPlanExecutor(map[orchestrate.StepType]orchestrate.StepHandler{
+    StepResearch: agentHandler,
+    StepClassify: reliableClassifier,
+})
+
+plan := orchestrate.ExecutionPlan{
+    Steps: []orchestrate.Step{
+        {Name: "research", Type: StepResearch, Input: "Analyze market trends for Q4"},
+        {Name: "classify", Type: StepClassify}, <span class="comment">// auto-chained from research</span>
+    },
+}
+
+results, err := executor.Execute(ctx, plan)</code></pre>
+
+  <div class="tip">
+    <strong>Tip:</strong> When composing patterns, keep the composition hierarchy shallow.
+    A PlanExecutor with RedundantLoop steps that each run SpecializedLoop that each create
+    AgentLoop is 4 levels deep - powerful but potentially slow and token-heavy. Profile before
+    going deeper than 2 levels.
+  </div>
+
+  <div class="info">
+    <strong>Structural typing:</strong> <code>ContextProvider</code> and <code>CandidateReranker</code>
+    are interfaces defined in the orchestrate package. Other packages (like <code>context</code> and
+    <code>rerank</code>) satisfy them via Go structural typing without importing orchestrate.
+    This keeps layer dependencies flowing downward.
+  </div>
+
+</div>
+
+<footer>pagantic - Probabilistic Agentic Control System</footer>
+
+</body>
+</html>

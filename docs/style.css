@@ -1,0 +1,170 @@
+:root {
+  --bg: #fafafa;
+  --fg: #1a1a1a;
+  --accent: #2563eb;
+  --accent-light: #dbeafe;
+  --border: #e5e7eb;
+  --code-bg: #f3f4f6;
+  --code-fg: #111827;
+  --nav-bg: #111827;
+  --nav-fg: #e5e7eb;
+  --layer-bg: #f9fafb;
+  --tip-bg: #ecfdf5;
+  --tip-border: #10b981;
+  --warn-bg: #fffbeb;
+  --warn-border: #f59e0b;
+  --info-bg: #eff6ff;
+  --info-border: #3b82f6;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  color: var(--fg);
+  background: var(--bg);
+  line-height: 1.6;
+}
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+nav {
+  background: var(--nav-bg);
+  color: var(--nav-fg);
+  padding: 1rem 2rem;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: 2rem;
+  flex-wrap: wrap;
+}
+nav .logo { font-weight: 700; font-size: 1.25rem; color: #fff; }
+nav a { color: var(--nav-fg); font-size: 0.875rem; }
+nav a:hover { color: #fff; text-decoration: none; }
+.container { max-width: 960px; margin: 0 auto; padding: 2rem; }
+h1 { font-size: 2.5rem; margin-bottom: 0.5rem; }
+h2 { font-size: 1.75rem; margin-top: 3rem; margin-bottom: 1rem; padding-bottom: 0.5rem; border-bottom: 2px solid var(--border); }
+h3 { font-size: 1.25rem; margin-top: 2rem; margin-bottom: 0.75rem; }
+h4 { font-size: 1.1rem; margin-top: 1.5rem; margin-bottom: 0.5rem; }
+p { margin-bottom: 1rem; }
+ul, ol { margin-bottom: 1rem; padding-left: 1.5rem; }
+li { margin-bottom: 0.25rem; }
+pre {
+  background: var(--code-bg);
+  color: var(--code-fg);
+  padding: 1rem;
+  border-radius: 6px;
+  overflow-x: auto;
+  margin-bottom: 1rem;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  border: 1px solid var(--border);
+}
+code {
+  background: var(--code-bg);
+  padding: 0.15em 0.35em;
+  border-radius: 3px;
+  font-size: 0.9em;
+}
+pre code { background: none; padding: 0; }
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 1.5rem;
+}
+th, td {
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border);
+}
+th { background: var(--code-bg); font-weight: 600; }
+.hero {
+  text-align: center;
+  padding: 3rem 0;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 2rem;
+}
+.hero p { font-size: 1.2rem; color: #6b7280; }
+.arch-diagram {
+  background: var(--code-bg);
+  padding: 1.5rem;
+  border-radius: 8px;
+  font-family: monospace;
+  white-space: pre;
+  overflow-x: auto;
+  margin-bottom: 1.5rem;
+  border: 1px solid var(--border);
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+.layer-card {
+  background: var(--layer-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1.25rem;
+  margin-bottom: 1rem;
+}
+.layer-card h4 { margin-top: 0; color: var(--accent); }
+.badge {
+  display: inline-block;
+  background: var(--accent-light);
+  color: var(--accent);
+  padding: 0.15em 0.5em;
+  border-radius: 4px;
+  font-size: 0.8em;
+  font-weight: 600;
+}
+.note {
+  background: var(--warn-bg);
+  border-left: 4px solid var(--warn-border);
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+  border-radius: 0 6px 6px 0;
+}
+.tip {
+  background: var(--tip-bg);
+  border-left: 4px solid var(--tip-border);
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+  border-radius: 0 6px 6px 0;
+}
+.info {
+  background: var(--info-bg);
+  border-left: 4px solid var(--info-border);
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+  border-radius: 0 6px 6px 0;
+}
+footer {
+  text-align: center;
+  padding: 2rem;
+  color: #9ca3af;
+  border-top: 1px solid var(--border);
+  margin-top: 3rem;
+}
+.page-header {
+  padding: 2rem 0 1rem;
+  margin-bottom: 1rem;
+}
+.page-header h1 { margin-bottom: 0.25rem; }
+.page-header p { color: #6b7280; font-size: 1.1rem; }
+.breadcrumb {
+  font-size: 0.875rem;
+  color: #6b7280;
+  margin-bottom: 1rem;
+}
+.breadcrumb a { color: var(--accent); }
+.toc {
+  background: var(--layer-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1.25rem 1.25rem 1.25rem 1rem;
+  margin-bottom: 2rem;
+}
+.toc h4 { margin-top: 0; margin-bottom: 0.5rem; font-size: 0.95rem; color: #6b7280; }
+.toc ul { list-style: none; padding-left: 0; margin-bottom: 0; }
+.toc li { margin-bottom: 0.35rem; }
+.toc a { font-size: 0.9rem; }
+.comment { color: #6b7280; }
+.highlight { color: var(--accent); font-weight: 600; }
+dt { font-weight: 600; margin-top: 1rem; }
+dd { margin-left: 1.5rem; margin-bottom: 0.5rem; }

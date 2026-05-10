@@ -1,0 +1,796 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tool System - pagantic</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<nav>
+  <a href="index.html" class="logo">pagantic</a>
+  <a href="architecture.html">Architecture</a>
+  <a href="orchestration.html">Orchestration</a>
+  <a href="retrieval.html">Retrieval</a>
+  <a href="tools.html">Tools</a>
+  <a href="constraints.html">Constraints</a>
+  <a href="https://github.com/miroslav-matejovsky/pagantic" target="_blank" style="margin-left: auto;">GitHub</a>
+</nav>
+
+<div class="container">
+
+  <div class="breadcrumb">
+    <a href="index.html">Home</a> &raquo; Tools
+  </div>
+
+  <div class="page-header">
+    <h1>Tool System</h1>
+    <p>Layer 4 - Deterministic capability execution outside the model</p>
+  </div>
+
+  <div class="toc">
+    <h4>Table of Contents</h4>
+    <ul>
+      <li><a href="#philosophy">1. The Tool System Philosophy</a></li>
+      <li><a href="#interface">2. Tool Interface</a></li>
+      <li><a href="#writing-a-tool">3. Writing a Tool - Complete Example</a></li>
+      <li><a href="#registry">4. Tool Registry</a></li>
+      <li><a href="#tool-call-loop">5. Tool Call Loop</a></li>
+      <li><a href="#definitions-schema">6. Tool Definitions and Schema</a></li>
+      <li><a href="#availability">7. Tool Availability</a></li>
+      <li><a href="#cli-tools">8. CLI Tools (TypeCLI)</a></li>
+      <li><a href="#orchestration">9. Using Tools with Orchestration</a></li>
+      <li><a href="#safety-observability">10. Safety and Observability</a></li>
+    </ul>
+  </div>
+
+  <!-- ================================================================== -->
+  <h2 id="philosophy">1. The Tool System Philosophy</h2>
+
+  <p>
+    pagantic draws a hard line between what the model decides and what the
+    harness executes. This separation is the foundation of the entire tool
+    system.
+  </p>
+
+  <ul>
+    <li><strong>Model decides WHEN to call tools</strong> - this decision is probabilistic,
+        driven by the model's understanding of the user's request and the
+        available tool definitions.</li>
+    <li><strong>Harness decides WHAT gets executed</strong> - tool dispatch is
+        deterministic. The harness looks up the tool by name in the registry
+        and runs it. No ambiguity, no inference.</li>
+    <li><strong>All side effects live in tools, never in the model</strong> -
+        the model produces text and tool calls. Tools produce side effects:
+        file I/O, HTTP requests, database queries, shell commands.</li>
+    <li><strong>Tools are registered, dispatched by name, and observable</strong> -
+        every tool execution goes through a single dispatch point (the registry),
+        making it easy to log, trace, and audit.</li>
+  </ul>
+
+  <div class="tip">
+    <strong>Design principle:</strong> If you can't observe it, you can't debug it.
+    Every tool call is recorded with timing, arguments, and errors through the
+    observer layer.
+  </div>
+
+  <p>
+    This split means you can swap models without touching tool code, and you
+    can add tools without retraining models. The contract between them is a
+    JSON schema describing parameters - nothing more.
+  </p>
+
+  <!-- ================================================================== -->
+  <h2 id="interface">2. Tool Interface</h2>
+
+  <p>
+    Every tool in pagantic implements a single interface with four methods.
+    The interface lives in <code>layers/04_tool</code>:
+  </p>
+
+<pre><code><span class="comment">// Tool is the contract each tool must satisfy.</span>
+type Tool interface {
+    <span class="comment">// Info returns tool metadata.</span>
+    Info() ToolInfo
+    <span class="comment">// Definition returns typed tool schema for the model.</span>
+    Definition() core.ToolDefinition
+    <span class="comment">// Execute runs tool with parsed args from model.</span>
+    Execute(args map[string]any) (string, error)
+    <span class="comment">// Available reports if tool is ready now.</span>
+    Available() (bool, string)
+}</code></pre>
+
+  <p>Each method has a clear responsibility:</p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Method</th>
+        <th>Purpose</th>
+        <th>Called by</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>Info()</code></td>
+        <td>Returns name, type, and description for logging and status display</td>
+        <td>Registry, observer</td>
+      </tr>
+      <tr>
+        <td><code>Definition()</code></td>
+        <td>Returns JSON Schema the model uses to construct tool call arguments</td>
+        <td>Registry (sent to model)</td>
+      </tr>
+      <tr>
+        <td><code>Execute()</code></td>
+        <td>Runs the tool with parsed arguments; returns result string or error</td>
+        <td>Registry dispatch</td>
+      </tr>
+      <tr>
+        <td><code>Available()</code></td>
+        <td>Reports whether tool can run right now; returns reason if not</td>
+        <td>Registry (filters definitions)</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>Supporting Types</h3>
+
+<pre><code>type ToolInfo struct {
+    Name        string
+    Type        ToolType
+    Description string
+}
+
+type ToolType string
+
+const (
+    TypeGo  ToolType = "go"   <span class="comment">// Pure Go implementation</span>
+    TypeCLI ToolType = "cli"  <span class="comment">// Wraps external binary</span>
+)</code></pre>
+
+  <div class="info">
+    <strong>ToolType</strong> is metadata only - it does not change execution behavior.
+    It exists so observers and dashboards can distinguish pure-Go tools from
+    tools that shell out to external binaries.
+  </div>
+
+  <!-- ================================================================== -->
+  <h2 id="writing-a-tool">3. Writing a Tool - Complete Example</h2>
+
+  <p>
+    Here is a complete dice roller tool with detailed comments explaining
+    every method. Use this as a template for your own tools.
+  </p>
+
+<pre><code>package main
+
+import (
+    "fmt"
+    "math/rand"
+
+    core "github.com/miroslav-matejovsky/pagantic/layers/00_core"
+    "github.com/miroslav-matejovsky/pagantic/layers/04_tool"
+)
+
+<span class="comment">// diceTool implements tool.Tool for rolling dice.</span>
+type diceTool struct{}
+
+<span class="comment">// Info returns metadata used for logging and status display.</span>
+func (d *diceTool) Info() tool.ToolInfo {
+    return tool.ToolInfo{
+        Name:        "roll_dice",
+        Type:        tool.TypeGo,
+        Description: "Rolls N dice with S sides each",
+    }
+}
+
+<span class="comment">// Definition returns the schema that tells the model what parameters
+// this tool accepts. The model uses this to construct ToolCall arguments.</span>
+func (d *diceTool) Definition() core.ToolDefinition {
+    return core.ToolDefinition{
+        Name:        "roll_dice",
+        Description: "Roll dice. Returns sum and individual results.",
+        Parameters: core.Schema{
+            Type: "object",
+            Properties: map[string]core.Schema{
+                "count": {
+                    Type:        "integer",
+                    Description: "Number of dice to roll (1-10)",
+                },
+                "sides": {
+                    Type:        "integer",
+                    Description: "Number of sides per die (4, 6, 8, 10, 12, 20)",
+                },
+            },
+            Required: []string{"count", "sides"},
+        },
+    }
+}
+
+<span class="comment">// Execute runs when the model calls this tool.
+// args are parsed from model's JSON - keys match Parameters schema.</span>
+func (d *diceTool) Execute(args map[string]any) (string, error) {
+    count := int(args["count"].(float64))  <span class="comment">// JSON numbers are float64</span>
+    sides := int(args["sides"].(float64))
+
+    if count &lt; 1 || count &gt; 10 {
+        return "", fmt.Errorf("count must be 1-10, got %d", count)
+    }
+
+    results := make([]int, count)
+    sum := 0
+    for i := range results {
+        results[i] = rand.Intn(sides) + 1
+        sum += results[i]
+    }
+
+    return fmt.Sprintf("Rolled %dd%d: %v (sum: %d)", count, sides, results, sum), nil
+}
+
+<span class="comment">// Available reports whether this tool can run right now.
+// Return (false, "reason") to temporarily disable a tool.</span>
+func (d *diceTool) Available() (bool, string) {
+    return true, ""
+}</code></pre>
+
+  <div class="note">
+    <strong>JSON number gotcha:</strong> All JSON numbers arrive as <code>float64</code>
+    in Go's <code>map[string]any</code>. Always cast with <code>int(args["key"].(float64))</code>
+    for integer parameters. Forgetting this is the most common tool bug.
+  </div>
+
+  <div class="tip">
+    <strong>Naming convention:</strong> Tool names should be <code>snake_case</code>
+    and verb-first: <code>roll_dice</code>, <code>search_web</code>,
+    <code>read_file</code>. The model uses these names to decide which tool
+    to call, so make them descriptive.
+  </div>
+
+  <!-- ================================================================== -->
+  <h2 id="registry">4. Tool Registry</h2>
+
+  <p>
+    The <code>Registry</code> is the central dispatch point for all tools.
+    It holds tools by name, filters by availability, and dispatches execution.
+  </p>
+
+<pre><code><span class="comment">// Create registry from tools</span>
+registry := tool.NewRegistry(&amp;diceTool{}, &amp;searchTool{}, &amp;calcTool{})
+
+<span class="comment">// Get definitions for model (only available tools)</span>
+defs := registry.Definitions()
+
+<span class="comment">// Execute by name (dispatched by harness, not model)</span>
+output, err := registry.Execute("roll_dice", map[string]any{
+    "count": 2.0,
+    "sides": 6.0,
+})
+
+<span class="comment">// Check availability of all tools</span>
+statuses := registry.CheckAvailability()
+for _, s := range statuses {
+    fmt.Printf("%s: available=%v reason=%s\n", s.Name, s.Available, s.Reason)
+}</code></pre>
+
+  <h3>Registry Methods</h3>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Method</th>
+        <th>Returns</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>NewRegistry(tools ...Tool)</code></td>
+        <td><code>*Registry</code></td>
+        <td>Builds registry from variadic tool list</td>
+      </tr>
+      <tr>
+        <td><code>Definitions()</code></td>
+        <td><code>[]ToolDefinition</code></td>
+        <td>Definitions for <strong>available</strong> tools only (sent to model)</td>
+      </tr>
+      <tr>
+        <td><code>AllDefinitions()</code></td>
+        <td><code>[]ToolDefinition</code></td>
+        <td>Definitions for <strong>all</strong> tools regardless of availability</td>
+      </tr>
+      <tr>
+        <td><code>Execute(name, args)</code></td>
+        <td><code>(string, error)</code></td>
+        <td>Dispatch by name; returns error if tool unknown</td>
+      </tr>
+      <tr>
+        <td><code>CheckAvailability()</code></td>
+        <td><code>[]ToolStatus</code></td>
+        <td>Availability state for all tools, sorted by name</td>
+      </tr>
+      <tr>
+        <td><code>Tools()</code></td>
+        <td><code>[]Tool</code></td>
+        <td>All registered tools, sorted by name</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="info">
+    <strong>Single dispatch point:</strong> All tool executions go through
+    <code>Registry.Execute()</code>. This makes it trivial to add logging,
+    rate limiting, or access control in one place.
+  </div>
+
+  <!-- ================================================================== -->
+  <h2 id="tool-call-loop">5. Tool Call Loop</h2>
+
+  <p>
+    The <code>AgentLoop</code> drives the tool call loop. When the model
+    produces a tool call instead of text, the harness executes the tool and
+    feeds the result back. This continues until the model produces a text
+    response or <code>MaxToolIterations</code> is reached (default: 20).
+  </p>
+
+  <div class="arch-diagram">User: "Roll 2d6 and tell me the result"
+  |
+  v
+Model -&gt; ToolCall{Name: "roll_dice", Args: {count: 2, sides: 6}}
+  |
+  v
+Harness executes: registry.Execute("roll_dice", args)
+  |
+  v
+Result: "Rolled 2d6: [3, 5] (sum: 8)"
+  |
+  v
+Tool result appended to messages as ToolResultMessage
+  |
+  v
+Model (again) -&gt; "You rolled 2d6 and got 3 and 5, for a total of 8!"
+  |
+  v
+Final text response returned to user</div>
+
+  <h3>How It Works Internally</h3>
+
+  <ol>
+    <li>User message is appended to conversation memory.</li>
+    <li>All messages (system + history + user) are sent to the inference engine.</li>
+    <li>If the model returns tool calls, each call is executed via the registry.</li>
+    <li>Each tool result is appended as a <code>ToolResultMessage</code>.</li>
+    <li>Messages are sent to the engine again (loop iteration).</li>
+    <li>Steps 3-5 repeat until the model returns text (no tool calls).</li>
+    <li>If <code>MaxToolIterations</code> is exceeded, an error is returned.</li>
+  </ol>
+
+  <div class="note">
+    <strong>Iteration guard:</strong> The default <code>MaxToolIterations</code>
+    is 20. Set it lower for simple agents, higher for complex multi-step workflows.
+    If exceeded, the loop returns an error rather than running forever.
+  </div>
+
+  <h3>Multiple Tool Calls Per Turn</h3>
+
+  <p>
+    Models can return multiple tool calls in a single response. The harness
+    executes all of them and appends all results before the next inference
+    call. This allows the model to gather information in parallel.
+  </p>
+
+  <!-- ================================================================== -->
+  <h2 id="definitions-schema">6. Tool Definitions and Schema</h2>
+
+  <p>
+    Tool definitions use <code>core.ToolDefinition</code> and <code>core.Schema</code>
+    to describe what a tool does and what parameters it accepts. These get
+    serialized to JSON Schema and sent to the model so it knows how to
+    construct tool call arguments.
+  </p>
+
+<pre><code>core.ToolDefinition{
+    Name:        "search_web",
+    Description: "Search the web for information",
+    Parameters: core.Schema{
+        Type: "object",
+        Properties: map[string]core.Schema{
+            "query": {
+                Type:        "string",
+                Description: "Search query",
+            },
+            "max_results": {
+                Type:        "integer",
+                Description: "Maximum results to return (default: 5)",
+            },
+        },
+        Required: []string{"query"},
+    },
+}</code></pre>
+
+  <h3>Schema Type</h3>
+
+  <p>
+    The <code>core.Schema</code> type is a JSON Schema subset that covers
+    the common cases for tool parameters:
+  </p>
+
+<pre><code>type Schema struct {
+    Type        string            `json:"type,omitempty"`
+    Description string            `json:"description,omitempty"`
+    Properties  map[string]Schema `json:"properties,omitempty"`
+    Required    []string          `json:"required,omitempty"`
+    Enum        []string          `json:"enum,omitempty"`
+    Items       *Schema           `json:"items,omitempty"`
+    Default     any               `json:"default,omitempty"`
+}</code></pre>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Field</th>
+        <th>Use</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>Type</code></td>
+        <td><code>"object"</code>, <code>"string"</code>, <code>"integer"</code>, <code>"number"</code>, <code>"boolean"</code>, <code>"array"</code></td>
+      </tr>
+      <tr>
+        <td><code>Properties</code></td>
+        <td>Named parameters when Type is <code>"object"</code></td>
+      </tr>
+      <tr>
+        <td><code>Required</code></td>
+        <td>List of parameter names the model must always provide</td>
+      </tr>
+      <tr>
+        <td><code>Enum</code></td>
+        <td>Constrain a string parameter to specific values</td>
+      </tr>
+      <tr>
+        <td><code>Items</code></td>
+        <td>Schema for array elements when Type is <code>"array"</code></td>
+      </tr>
+      <tr>
+        <td><code>Default</code></td>
+        <td>Default value hint for optional parameters</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="tip">
+    <strong>Write good descriptions.</strong> The model reads your
+    <code>Description</code> fields to decide when and how to call a tool.
+    Be specific about ranges, formats, and defaults. Vague descriptions
+    lead to bad tool calls.
+  </div>
+
+  <!-- ================================================================== -->
+  <h2 id="availability">7. Tool Availability</h2>
+
+  <p>
+    Tools can be conditionally available. The <code>Available()</code> method
+    lets a tool report whether it can run right now and why not. This is
+    useful for tools that depend on external resources, configuration, or
+    runtime conditions.
+  </p>
+
+<pre><code>type fileTool struct {
+    dir string
+}
+
+func (f *fileTool) Available() (bool, string) {
+    if f.dir == "" {
+        return false, "no working directory configured"
+    }
+    info, err := os.Stat(f.dir)
+    if err != nil || !info.IsDir() {
+        return false, fmt.Sprintf("directory not accessible: %s", f.dir)
+    }
+    return true, ""
+}</code></pre>
+
+  <h3>How Availability Affects the Registry</h3>
+
+  <ul>
+    <li><code>registry.Definitions()</code> returns only <strong>available</strong>
+        tools. The model never sees unavailable tools.</li>
+    <li><code>registry.AllDefinitions()</code> returns <strong>all</strong> tools
+        regardless of availability.</li>
+    <li><code>registry.CheckAvailability()</code> returns a <code>ToolStatus</code>
+        for each tool with its name, type, description, availability flag, and reason.</li>
+  </ul>
+
+<pre><code><span class="comment">// ToolStatus is availability state for one tool.</span>
+type ToolStatus struct {
+    Name        string
+    Type        ToolType
+    Description string
+    Available   bool
+    Reason      string
+}</code></pre>
+
+  <div class="info">
+    <strong>Dynamic availability:</strong> Availability is checked every time
+    <code>Definitions()</code> is called. A tool can become available or
+    unavailable between loop iterations. For example, a tool might become
+    unavailable after a rate limit is hit.
+  </div>
+
+  <div class="note">
+    <strong>Unavailable tools can still be executed.</strong>
+    <code>Registry.Execute()</code> does not check availability - it only
+    checks that the tool exists. The availability filter applies only to
+    definition listing. This is by design: the model should not see
+    unavailable tools, but if a tool becomes unavailable mid-loop, the
+    harness can still try to execute a previously-issued call.
+  </div>
+
+  <!-- ================================================================== -->
+  <h2 id="cli-tools">8. CLI Tools (TypeCLI)</h2>
+
+  <p>
+    CLI tools wrap external binaries. They implement the same <code>Tool</code>
+    interface but shell out to a subprocess for execution. Mark them with
+    <code>TypeCLI</code> so observers know they depend on external programs.
+  </p>
+
+<pre><code><span class="comment">// Tool that wraps an external binary</span>
+type grepTool struct{}
+
+func (g *grepTool) Info() tool.ToolInfo {
+    return tool.ToolInfo{
+        Name:        "grep_files",
+        Type:        tool.TypeCLI,  <span class="comment">// marks as external binary wrapper</span>
+        Description: "Search files using grep",
+    }
+}
+
+func (g *grepTool) Definition() core.ToolDefinition {
+    return core.ToolDefinition{
+        Name:        "grep_files",
+        Description: "Search files recursively for a pattern",
+        Parameters: core.Schema{
+            Type: "object",
+            Properties: map[string]core.Schema{
+                "pattern": {
+                    Type:        "string",
+                    Description: "Regular expression pattern to search for",
+                },
+            },
+            Required: []string{"pattern"},
+        },
+    }
+}
+
+func (g *grepTool) Execute(args map[string]any) (string, error) {
+    pattern := args["pattern"].(string)
+    cmd := exec.Command("grep", "-r", pattern, ".")
+    output, err := cmd.CombinedOutput()
+    return string(output), err
+}
+
+func (g *grepTool) Available() (bool, string) {
+    _, err := exec.LookPath("grep")
+    if err != nil {
+        return false, "grep binary not found in PATH"
+    }
+    return true, ""
+}</code></pre>
+
+  <div class="tip">
+    <strong>CLI tool availability:</strong> Use <code>exec.LookPath</code> in
+    <code>Available()</code> to check if the binary exists. This way the tool
+    gracefully disappears from the model's view when the binary is missing.
+  </div>
+
+  <div class="note">
+    <strong>Security consideration:</strong> CLI tools run arbitrary
+    subprocesses. Validate and sanitize arguments before passing them to
+    <code>exec.Command</code>. Never pass raw model output as shell arguments
+    without validation.
+  </div>
+
+  <!-- ================================================================== -->
+  <h2 id="orchestration">9. Using Tools with Orchestration</h2>
+
+  <p>
+    Tools are wired into the orchestration layer through the registry.
+    Both <code>AgentLoop</code> and <code>SpecializedLoop</code> accept
+    a <code>*tool.Registry</code>.
+  </p>
+
+  <h3>AgentLoop - Multi-turn with tools</h3>
+
+<pre><code>agent := orchestrate.NewAgentLoop(orchestrate.LoopConfig{
+    Engine:   engine,
+    Tools:    registry,  <span class="comment">// enable tool calls</span>
+    OnToolResult: func(name, output string) {
+        fmt.Printf("[TOOL] %s: %s\n", name, output)
+    },
+})</code></pre>
+
+  <p>
+    The <code>OnToolResult</code> callback fires after each tool execution.
+    Use it for logging, progress display, or streaming tool output to users.
+  </p>
+
+  <h3>SpecializedLoop - Two-phase: tools then structured output</h3>
+
+<pre><code>sl := orchestrate.NewSpecializedLoop(orchestrate.SpecializedConfig{
+    Engine: engine,
+    Tools:  registry,   <span class="comment">// Phase 1: tool calls</span>
+    Schema: schema,     <span class="comment">// Phase 2: structured output</span>
+})
+<span class="comment">// Phase 1: model uses tools to gather info
+// Phase 2: model produces structured JSON using gathered info</span></code></pre>
+
+  <p>
+    <code>SpecializedLoop</code> creates a fresh <code>AgentLoop</code>
+    internally for each call. In phase 1, the model uses tools to gather
+    information. In phase 2, tools are removed and the model produces
+    structured JSON output conforming to the given schema.
+  </p>
+
+  <div class="info">
+    <strong>Two-phase design:</strong> Separating tool use from structured
+    output prevents the model from trying to produce JSON while also issuing
+    tool calls. Phase 1 is free-form; phase 2 is constrained.
+  </div>
+
+  <h3>LoopConfig Fields</h3>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Field</th>
+        <th>Type</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>Engine</code></td>
+        <td><code>inference.Engine</code></td>
+        <td>LLM inference backend (required)</td>
+      </tr>
+      <tr>
+        <td><code>Tools</code></td>
+        <td><code>*tool.Registry</code></td>
+        <td>Tool registry; nil disables tool calls</td>
+      </tr>
+      <tr>
+        <td><code>SystemPrompt</code></td>
+        <td><code>string</code></td>
+        <td>System message prepended to all requests</td>
+      </tr>
+      <tr>
+        <td><code>MaxToolIterations</code></td>
+        <td><code>int</code></td>
+        <td>Max tool-call loop rounds; 0 uses default (20)</td>
+      </tr>
+      <tr>
+        <td><code>OnToolResult</code></td>
+        <td><code>func(name, output string)</code></td>
+        <td>Callback after each tool execution</td>
+      </tr>
+      <tr>
+        <td><code>Observer</code></td>
+        <td><code>observe.EventLog</code></td>
+        <td>Event log for observability</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- ================================================================== -->
+  <h2 id="safety-observability">10. Safety and Observability</h2>
+
+  <p>
+    pagantic treats tool observability as a first-class concern.
+    The <code>ToolExecutor</code> wraps the registry with event recording:
+  </p>
+
+  <h3>ToolExecutor</h3>
+
+<pre><code><span class="comment">// ToolExecutor wraps registry with observability.</span>
+type ToolExecutor struct {
+    Registry *Registry
+    Observer observe.EventLog
+}
+
+<span class="comment">// Execute runs tool call and records events.</span>
+func (te *ToolExecutor) Execute(ctx context.Context, call core.ToolCall) core.ToolResult {
+    start := time.Now()
+    te.record(observe.Event{
+        Timestamp: start,
+        Layer:     "tool",
+        Action:    "execute_start",
+        Data: map[string]any{
+            "call_id": call.ID,
+            "name":    call.Name,
+            "args":    call.Arguments,
+        },
+    })
+
+    <span class="comment">// ... execute tool ...</span>
+
+    te.record(observe.Event{
+        Timestamp: time.Now(),
+        Layer:     "tool",
+        Action:    "execute_end",
+        Data: map[string]any{
+            "call_id": call.ID,
+            "name":    call.Name,
+            "args":    call.Arguments,
+        },
+        Duration: time.Since(start),
+        Error:    err,
+    })
+
+    return result
+}</code></pre>
+
+  <h3>Safety Properties</h3>
+
+  <ul>
+    <li><strong>Single dispatch point</strong> - All tool executions go through
+        the registry. One place to add guards, rate limits, or access control.</li>
+    <li><strong>Full event recording</strong> - Every tool execution is recorded
+        with call ID, name, arguments, duration, and any error. Events use
+        <code>execute_start</code> and <code>execute_end</code> actions.</li>
+    <li><strong>Context cancellation</strong> - <code>ToolExecutor</code> checks
+        <code>ctx.Err()</code> before execution. If the context is cancelled,
+        the tool is not run and a cancellation event is recorded.</li>
+    <li><strong>Error as data, not exceptions</strong> - Tool errors are returned
+        as tool result messages with <code>IsError: true</code>. The model sees
+        the error text and can retry or adjust its approach.</li>
+  </ul>
+
+<pre><code><span class="comment">// ToolResult carries output back to the model.</span>
+type ToolResult struct {
+    CallID  string
+    Name    string
+    Content string
+    IsError bool  <span class="comment">// model sees error text and can react</span>
+}</code></pre>
+
+  <div class="tip">
+    <strong>Error recovery:</strong> When a tool returns an error, the model
+    receives the error text as a tool result. Smart models will adjust their
+    approach - try different arguments, use a different tool, or explain the
+    failure to the user. This is more resilient than crashing the loop.
+  </div>
+
+  <h3>Observer Events</h3>
+
+  <p>Events recorded by the tool layer follow this structure:</p>
+
+<pre><code>observe.Event{
+    Timestamp: time.Now(),
+    Layer:     "tool",           <span class="comment">// always "tool" for tool events</span>
+    Action:    "execute_start",  <span class="comment">// or "execute_end", "execute_cancelled"</span>
+    Data: map[string]any{
+        "call_id": "call_abc123",
+        "name":    "roll_dice",
+        "args":    map[string]any{"count": 2, "sides": 6},
+    },
+    Duration:  elapsed,          <span class="comment">// only on execute_end</span>
+    Error:     err,              <span class="comment">// nil on success</span>
+}</code></pre>
+
+  <div class="info">
+    <strong>Debugging tip:</strong> Filter observer events by
+    <code>Layer: "tool"</code> to see all tool activity. The
+    <code>call_id</code> field lets you correlate start and end events
+    for the same call.
+  </div>
+
+</div>
+
+<footer>pagantic - Probabilistic Agentic Control System</footer>
+
+</body>
+</html>
