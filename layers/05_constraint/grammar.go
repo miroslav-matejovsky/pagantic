@@ -61,11 +61,17 @@ func (gc GrammarConstraint) GrammarString() string {
 	return gc.Definition.GrammarString()
 }
 
-// hasRootRule checks if grammar text contains a root rule definition.
+// hasRootRule checks if grammar text contains an exact root rule definition.
+// The LHS of the ::= must be exactly "root" (trimmed), not just a prefix.
 func hasRootRule(grammar string) bool {
 	for _, line := range strings.Split(grammar, "\n") {
 		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "root") && strings.Contains(trimmed, "::=") {
+		idx := strings.Index(trimmed, "::=")
+		if idx < 0 {
+			continue
+		}
+		lhs := strings.TrimSpace(trimmed[:idx])
+		if lhs == "root" {
 			return true
 		}
 	}

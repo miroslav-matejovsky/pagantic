@@ -40,6 +40,14 @@ root ::= "{" ws "}"
 	require.NoError(t, err)
 }
 
+func TestValidateGrammar_RootPrefixNotSufficient(t *testing.T) {
+	// "rootRule" starts with "root" but is not an exact root rule - must be rejected.
+	grammar := `rootRule ::= "yes" | "no"`
+	err := ValidateGrammar(grammar)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "root rule")
+}
+
 func TestGrammarDefinition_GrammarString(t *testing.T) {
 	gd := GrammarDefinition{
 		Name:    "test",

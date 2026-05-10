@@ -22,7 +22,8 @@ type VotingStrategy interface {
 // comparison is used.
 type MajorityVoting struct{}
 
-// Vote picks the most frequent candidate.
+// Vote picks the most frequent candidate. On ties, the first-seen candidate
+// in the original slice order wins, making tie-breaking deterministic.
 func (m MajorityVoting) Vote(candidates []string) (string, float64, error) {
 	if len(candidates) == 0 {
 		return "", 0, fmt.Errorf("majority voting: no candidates")
@@ -36,10 +37,11 @@ func (m MajorityVoting) Vote(candidates []string) (string, float64, error) {
 		counts[c]++
 	}
 
+	// Iterate in original order to break ties deterministically by first seen.
 	var winner string
 	var maxCount int
-	for c, count := range counts {
-		if count > maxCount {
+	for _, c := range candidates {
+		if count := counts[c]; count > maxCount {
 			winner = c
 			maxCount = count
 		}

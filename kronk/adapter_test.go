@@ -212,6 +212,34 @@ func TestAdapterModelInfo(t *testing.T) {
 	}, adapter.ModelInfo())
 }
 
+func TestAdapterInferGrammar(t *testing.T) {
+	chat := &mockChat{
+		responses: []model.ChatResponse{
+			{Choices: []model.Choice{{
+				Delta:           &model.ResponseMessage{Content: "yes"},
+				FinishReasonPtr: stringPtr(model.FinishReasonStop),
+			}}},
+		},
+	}
+	adapter := NewAdapter(chat, nil)
+
+	// Grammar present - should appear in request.
+	_, err := adapter.Infer(context.Background(), inference.Request{
+		Messages: []core.Message{core.NewUserMessage("hi")},
+		Grammar:  `root ::= "yes" | "no"`,
+	})
+	require.NoError(t, err)
+	require.Equal(t, `root ::= "yes" | "no"`, chat.request["grammar"])
+
+	// Grammar absent - key must not be in request.
+	_, err = adapter.Infer(context.Background(), inference.Request{
+		Messages: []core.Message{core.NewUserMessage("hi")},
+	})
+	require.NoError(t, err)
+	_, hasGrammar := chat.request["grammar"]
+	require.False(t, hasGrammar)
+}
+
 func TestMessagesToDSanity(t *testing.T) {
 	msgs := []core.Message{
 		core.NewSystemMessage("sys"),

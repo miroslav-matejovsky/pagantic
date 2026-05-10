@@ -30,7 +30,7 @@ type LoopConfig struct {
 	Engine            inference.Engine
 	Tools             *tool.Registry
 	SystemPrompt      string
-	Grammar           string // GBNF grammar for decoder-level constraint; empty means none
+	Grammar           string // GBNF grammar for decoder-level constraint; only applied in ChatStructured, not Chat
 	MaxTokens         int
 	MaxToolIterations int // max tool-call loop rounds, 0 uses default (20)
 	Stream            *inference.StreamHandler

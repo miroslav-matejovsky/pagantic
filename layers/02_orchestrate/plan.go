@@ -42,7 +42,7 @@ type RoutingStrategy interface {
 }
 
 // RerankCandidate represents a scored item for plan-level reranking.
-// Mirrors rerank.Candidate for structural typing compatibility.
+// Mirrors rerank.Candidate fields to make conversion straightforward across the layer boundary.
 type RerankCandidate struct {
 	Content  string
 	Score    float64
