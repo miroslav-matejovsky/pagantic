@@ -15,6 +15,8 @@
   <a href="retrieval.html">Retrieval</a>
   <a href="tools.html">Tools</a>
   <a href="constraints.html">Constraints</a>
+  <a href="contracts.html">Contracts</a>
+  <a href="glossary.html">Glossary</a>
   <a href="https://github.com/miroslav-matejovsky/pagantic" target="_blank" style="margin-left: auto;">GitHub</a>
 </nav>
 
@@ -44,6 +46,9 @@
       <li><a href="#retry-policy">10. Retry Policy (Layer 7)</a></li>
       <li><a href="#composing">11. Composing Constraints</a></li>
       <li><a href="#when-to-use">12. When to Use What</a></li>
+      <li><a href="#failure-taxonomy">Failure Taxonomy</a></li>
+      <li><a href="#constraint-pipeline">Constraint Pipeline</a></li>
+      <li><a href="#confidence-model">Confidence Model</a></li>
     </ul>
   </div>
 
@@ -596,6 +601,232 @@ if errs := rv.Validate(output); len(errs) > 0 {
   <div class="note">
     <strong>Note:</strong> Decoder-level constraints (grammar) and post-hoc constraints (schema, rules) are complementary, not competing. Grammar prevents structurally invalid output. Schema and rules catch semantic issues that grammar cannot express.
   </div>
+
+<!-- ================================================================== -->
+<h2 id="failure-taxonomy">Failure Taxonomy</h2>
+
+<p>
+  pagantic defines seven failure categories. Constraint and validation layers emit
+  specific categories that map to the
+  <a href="contracts.html#failure-taxonomy">canonical failure taxonomy</a>.
+</p>
+
+<h3>Constraint-Related Failures</h3>
+
+<table>
+  <thead>
+    <tr><th>Error Code</th><th>Category</th><th>Trigger</th><th>Recovery</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>CONSTRAINT_GRAMMAR_REJECTED</code></td>
+      <td>ConstraintFailure</td>
+      <td>GBNF grammar rejected model output at decoder level</td>
+      <td>Re-infer (grammar will constrain next attempt)</td>
+    </tr>
+    <tr>
+      <td><code>CONSTRAINT_SCHEMA_INVALID</code></td>
+      <td>ConstraintFailure</td>
+      <td>SchemaValidator found output does not match JSON schema</td>
+      <td>JSON repair + re-validate, or re-infer</td>
+    </tr>
+    <tr>
+      <td><code>CONSTRAINT_JSON_INVALID</code></td>
+      <td>ConstraintFailure</td>
+      <td>Output is not valid JSON (truncated, malformed)</td>
+      <td>RepairJSON + re-validate</td>
+    </tr>
+    <tr>
+      <td><code>CONSTRAINT_ENUM_UNRECOGNIZED</code></td>
+      <td>ConstraintFailure</td>
+      <td>Enum value not in allowed set after normalization</td>
+      <td>Re-infer with tighter prompt</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>Validation-Related Failures</h3>
+
+<table>
+  <thead>
+    <tr><th>Error Code</th><th>Category</th><th>Trigger</th><th>Recovery</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>VALIDATION_RULE_FAILED</code></td>
+      <td>ValidationFailure</td>
+      <td>RuleValidator deterministic check failed</td>
+      <td>RepairStrategy + retry, or re-infer</td>
+    </tr>
+    <tr>
+      <td><code>VALIDATION_SEMANTIC_FAILED</code></td>
+      <td>ValidationFailure</td>
+      <td>SemanticValidator detected hallucination or nonsense</td>
+      <td>Re-infer with adjusted prompt</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="info">
+  <strong>Full taxonomy.</strong> These are the constraint and validation categories.
+  The complete failure taxonomy (including InferenceFailure, ToolFailure,
+  OrchestrationFailure, ConfigurationFailure, Cancellation) is in
+  <a href="contracts.html#failure-taxonomy">Contracts: Failure Taxonomy</a>.
+</div>
+
+<!-- ================================================================== -->
+<h2 id="constraint-pipeline">Constraint Pipeline</h2>
+
+<p>
+  The constraint pipeline is the ordered sequence of enforcement stages applied to
+  model output. It is a first-class abstraction, not ad hoc composition.
+</p>
+
+<h3>Pipeline Stages</h3>
+
+<p>
+  Stages execute in order. Each stage receives the output (possibly repaired by
+  a previous stage) and produces a pass/fail result:
+</p>
+
+<table>
+  <thead>
+    <tr><th>Stage</th><th>Layer</th><th>When Applied</th><th>Outcome</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>1. Decoder Constraint</td>
+      <td>constraint (L05)</td>
+      <td>During inference (GBNF grammar)</td>
+      <td>Tokens constrained at generation time</td>
+    </tr>
+    <tr>
+      <td>2. JSON Repair</td>
+      <td>constraint (L05)</td>
+      <td>Post-inference, if JSON invalid</td>
+      <td>Repaired JSON or failure</td>
+    </tr>
+    <tr>
+      <td>3. Enum Normalization</td>
+      <td>constraint (L05)</td>
+      <td>Post-repair, if schema has enums</td>
+      <td>Normalized enum values</td>
+    </tr>
+    <tr>
+      <td>4. Schema Validation</td>
+      <td>constraint (L05)</td>
+      <td>Post-normalization</td>
+      <td>Pass or ConstraintFailure</td>
+    </tr>
+    <tr>
+      <td>5. Rule Validation</td>
+      <td>validate (L07)</td>
+      <td>Post-schema validation</td>
+      <td>Pass or ValidationFailure</td>
+    </tr>
+    <tr>
+      <td>6. Semantic Validation</td>
+      <td>validate (L07)</td>
+      <td>Optional, post-rule validation</td>
+      <td>Pass or ValidationFailure (with confidence)</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>Stage Configuration per Mode</h3>
+
+<p>
+  Not all stages apply to every execution mode:
+</p>
+
+<table>
+  <thead>
+    <tr><th>Stage</th><th>chat</th><th>structured</th><th>plan</th><th>redundant</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Decoder Constraint</td><td>-</td><td>Optional</td><td>Per step</td><td>Optional</td></tr>
+    <tr><td>JSON Repair</td><td>-</td><td>Yes</td><td>Per step</td><td>Yes</td></tr>
+    <tr><td>Enum Normalization</td><td>-</td><td>Yes</td><td>Per step</td><td>Yes</td></tr>
+    <tr><td>Schema Validation</td><td>-</td><td>Required</td><td>Per step</td><td>Required</td></tr>
+    <tr><td>Rule Validation</td><td>Optional</td><td>Optional</td><td>Per step</td><td>Optional</td></tr>
+    <tr><td>Semantic Validation</td><td>Optional</td><td>Optional</td><td>Per step</td><td>Optional</td></tr>
+  </tbody>
+</table>
+
+<h3>Structured Output Declaration</h3>
+
+<p>
+  Every structured output path must declare:
+</p>
+
+<ul>
+  <li><strong>Schema required?</strong> - yes for structured and redundant modes</li>
+  <li><strong>Grammar optional?</strong> - yes, provides stronger decoder-level guarantee when available</li>
+  <li><strong>Which repairs allowed?</strong> - controlled by <code>OutputContract.RepairAllowed</code></li>
+  <li><strong>Failure response</strong> - <a href="glossary.html#system-error">SystemError</a> with
+    category ConstraintFailure or ValidationFailure</li>
+</ul>
+
+<div class="tip">
+  <strong>Pipeline as contract.</strong> The constraint pipeline is declarative -
+  callers specify what enforcement they want via
+  <a href="contracts.html#output-contract">OutputContract</a>, and the pipeline
+  applies the appropriate stages. This replaces ad hoc constraint composition.
+</div>
+
+<!-- ================================================================== -->
+<h2 id="confidence-model">Confidence Model</h2>
+
+<p>
+  Confidence is an optional score on
+  <a href="contracts.html#system-response">SystemResponse</a> indicating output reliability.
+  It is a system-wide concept, not limited to any single pattern.
+</p>
+
+<h3>Confidence Sources</h3>
+
+<table>
+  <thead>
+    <tr><th>Source</th><th>How Computed</th><th>Range</th><th>Pattern</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Voting</strong></td>
+      <td>Agreement ratio among N redundant inferences</td>
+      <td>[0..1]</td>
+      <td>RedundantLoop</td>
+    </tr>
+    <tr>
+      <td><strong>Validation</strong></td>
+      <td>Binary: 1.0 if all rules pass, 0.0 if any fail. Semantic validation may provide a continuous score.</td>
+      <td>[0..1]</td>
+      <td>Any structured pattern</td>
+    </tr>
+    <tr>
+      <td><strong>Retrieval</strong></td>
+      <td>Coverage metric: average retrieval score or fraction of query terms matched</td>
+      <td>[0..1]</td>
+      <td>Patterns using ContextProvider</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>Interpretation</h3>
+
+<p>
+  Confidence can be used as:
+</p>
+
+<ul>
+  <li><strong>Gate</strong> - reject responses below a threshold (e.g., confidence &lt; 0.6 triggers fallback)</li>
+  <li><strong>Informational</strong> - pass confidence to the caller for their own decision-making</li>
+</ul>
+
+<div class="info">
+  <strong>Optional field.</strong> Confidence is not always available. Chat mode (AgentLoop)
+  typically does not produce confidence. Structured and redundant modes can produce it
+  when validation or voting runs. Callers should check for nil before using.
+</div>
 
 </div>
 

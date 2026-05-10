@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Glossary - pagantic</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<nav>
+  <a href="index.html" class="logo">pagantic</a>
+  <a href="architecture.html">Architecture</a>
+  <a href="orchestration.html">Orchestration</a>
+  <a href="retrieval.html">Retrieval</a>
+  <a href="tools.html">Tools</a>
+  <a href="constraints.html">Constraints</a>
+  <a href="contracts.html">Contracts</a>
+  <a href="glossary.html">Glossary</a>
+  <a href="https://github.com/miroslav-matejovsky/pagantic" target="_blank" class="github-link">GitHub</a>
+</nav>
+
+<div class="container">
+
+<div class="breadcrumb"><a href="index.html">Home</a> / Glossary</div>
+
+<div class="page-header">
+  <h1>Glossary</h1>
+  <p>Canonical definitions for every term used across pagantic documentation. Each entry links back to the detailed section where the concept is explained.</p>
+</div>
+
+<div class="toc">
+  <h4>Table of Contents</h4>
+  <ul>
+    <li><a href="#system-concepts">1. System Concepts</a></li>
+    <li><a href="#system-boundary">2. System Boundary</a></li>
+    <li><a href="#execution">3. Execution</a></li>
+    <li><a href="#execution-ir">4. Execution IR (Intermediate Representation)</a></li>
+    <li><a href="#retrieval-and-reranking">5. Retrieval and Reranking</a></li>
+    <li><a href="#tools">6. Tools</a></li>
+    <li><a href="#constraints-and-validation">7. Constraints and Validation</a></li>
+    <li><a href="#failure-categories">8. Failure Categories</a></li>
+    <li><a href="#memory">9. Memory</a></li>
+    <li><a href="#observability">10. Observability</a></li>
+    <li><a href="#prompt">11. Prompt</a></li>
+    <li><a href="#architecture">12. Architecture</a></li>
+  </ul>
+</div>
+
+<!-- ================================================================== -->
+<h2 id="system-concepts">1. System Concepts</h2>
+
+<dl>
+  <dt id="agent">Agent</dt>
+  <dd>Model + harness executing multi-step decisions. Not a standalone entity; an agent is a model operating within a Loop with access to Tools and Memory. Owned by: orchestrate layer.</dd>
+
+  <dt id="loop">Loop</dt>
+  <dd>Control structure around inference. Drives retry, tool calls, validation. Four patterns: AgentLoop, SpecializedLoop, PlanExecutor, RedundantLoop. Owned by: orchestrate layer.</dd>
+
+  <dt id="task">Task</dt>
+  <dd>Structured objective with intent, constraints, and expected output type. May be expressed as a <a href="#system-request">SystemRequest</a>.</dd>
+
+  <dt id="intent">Intent</dt>
+  <dd>What the output must accomplish. Used by semantic validation and planning to judge correctness beyond schema compliance.</dd>
+
+  <dt id="goal">Goal</dt>
+  <dd>Task-level target state. A plan succeeds when all steps converge toward the goal.</dd>
+
+  <dt id="mode">Mode</dt>
+  <dd>Execution strategy selector: chat, structured, plan, redundant. Determines which Loop pattern runs and which constraints apply.</dd>
+</dl>
+
+<!-- ================================================================== -->
+<h2 id="system-boundary">2. System Boundary</h2>
+
+<dl>
+  <dt id="system-request">SystemRequest</dt>
+  <dd>Input from adapters into the system. Contains messages, mode, execution hints, output contract, correlation ids. See <a href="contracts.html#system-request">Contracts</a>.</dd>
+
+  <dt id="system-response">SystemResponse</dt>
+  <dd>Output returned to adapters. Contains content, structured output, validation result, confidence, error, token usage. See <a href="contracts.html#system-response">Contracts</a>.</dd>
+
+  <dt id="system-error">SystemError</dt>
+  <dd>Canonical error model with error_code, category (from Failure Taxonomy), retryable flag, details map. See <a href="contracts.html#system-error">Contracts</a>.</dd>
+
+  <dt id="execution-hints">ExecutionHints</dt>
+  <dd>Optional knobs on SystemRequest: max_tokens, timeout, temperature, mode override. See <a href="contracts.html#execution-hints">Contracts</a>.</dd>
+
+  <dt id="output-contract">OutputContract</dt>
+  <dd>Schema and grammar expectations attached to SystemRequest. Declares what shape the response must have. See <a href="contracts.html#output-contract">Contracts</a>.</dd>
+</dl>
+
+<!-- ================================================================== -->
+<h2 id="execution">3. Execution</h2>
+
+<dl>
+  <dt id="execution-state">ExecutionState</dt>
+  <dd>Tracks lifecycle position: current_state, timestamps, attempt counters, last_error, last_step. See <a href="contracts.html#execution-lifecycle">Contracts</a>.</dd>
+
+  <dt id="execution-context">ExecutionContext</dt>
+  <dd>Per-request context carrying immutable ids (request_id, session_id) plus mutable metadata (attempts, selected tools, candidates). See <a href="contracts.html#execution-context">Contracts</a>.</dd>
+
+  <dt id="execution-plan">ExecutionPlan</dt>
+  <dd>Ordered sequence of Steps defining a multi-step pipeline. Created by a Planner or manually authored. Executed by PlanExecutor. See <a href="orchestration.html#plan-executor">Orchestration</a>.</dd>
+
+  <dt id="step">Step</dt>
+  <dd>Single unit of work in an ExecutionPlan. Has a type, handler, name, and input/output shape.</dd>
+
+  <dt id="step-handler">StepHandler</dt>
+  <dd>Function that executes a Step, receiving StepInput and producing StepOutput.</dd>
+</dl>
+
+<!-- ================================================================== -->
+<h2 id="execution-ir">4. Execution IR (Intermediate Representation)</h2>
+
+<dl>
+  <dt id="step-input">StepInput</dt>
+  <dd>Typed wrapper for data entering a Step. May contain messages, candidates, context, or tool results.</dd>
+
+  <dt id="step-output">StepOutput</dt>
+  <dd>Typed wrapper for data leaving a Step. Carries results forward to next Step in plan.</dd>
+
+  <dt id="candidate-ir">CandidateIR</dt>
+  <dd>Canonical cross-step representation: {content, source, score, metadata}. Unifies context.Chunk and rerank.Candidate at step boundaries.</dd>
+
+  <dt id="context-ir">ContextIR</dt>
+  <dd>List of chunks or messages with provenance tracking. Built by context layer, consumed by orchestrate.</dd>
+</dl>
+
+<!-- ================================================================== -->
+<h2 id="retrieval-and-reranking">5. Retrieval and Reranking</h2>
+
+<dl>
+  <dt id="retriever">Retriever</dt>
+  <dd>Interface for knowledge lookup. Returns Chunks matching a query. Owned by: context layer (L03).</dd>
+
+  <dt id="chunk">Chunk</dt>
+  <dd>Individual piece of retrieved context with content, source, and score. Owned by: context layer (L03).</dd>
+
+  <dt id="context-provider">ContextProvider</dt>
+  <dd>Structural typing interface consumed by orchestrate. Any type with <code>RetrieveContext(ctx, query) ([]core.Message, error)</code> satisfies it. See <a href="architecture.html#structural-typing">Architecture</a>.</dd>
+
+  <dt id="candidate">Candidate</dt>
+  <dd>Item to be scored and ranked. Has content, source, score, metadata. Owned by: rerank layer (L06).</dd>
+
+  <dt id="candidate-reranker">CandidateReranker</dt>
+  <dd>Structural typing interface consumed by orchestrate. Any type with <code>RerankCandidates(ctx, query, candidates) ([]Candidate, error)</code> satisfies it. See <a href="architecture.html#structural-typing">Architecture</a>.</dd>
+
+  <dt id="relevance-scorer">RelevanceScorer</dt>
+  <dd>Scores candidates for relevance. Owned by: rerank layer (L06).</dd>
+
+  <dt id="retrieval-score">RetrievalScore</dt>
+  <dd>Score assigned by a Retriever. Meaning depends on implementation (BM25, cosine, etc.). See <a href="retrieval.html#score-semantics">Retrieval</a>.</dd>
+
+  <dt id="rerank-score">RerankScore</dt>
+  <dd>Normalized relevance score after reranking. See <a href="retrieval.html#score-semantics">Retrieval</a>.</dd>
+</dl>
+
+<!-- ================================================================== -->
+<h2 id="tools">6. Tools</h2>
+
+<dl>
+  <dt id="tool">Tool</dt>
+  <dd>Deterministic capability with metadata, schema, execution function, and availability check. All side effects live here. Owned by: tool layer (L04).</dd>
+
+  <dt id="tool-call">ToolCall</dt>
+  <dd>Model's request to invoke a tool. Contains tool name, arguments, and call id. Owned by: core (L00).</dd>
+
+  <dt id="tool-result">ToolResult</dt>
+  <dd>Output from executing a ToolCall. Contains content and error status. Part of execution IR.</dd>
+
+  <dt id="tool-safety">ToolSafety</dt>
+  <dd>Metadata declaring side effects (none/read/write/external), idempotency, required capabilities. See <a href="tools.html#tool-safety">Tools</a>.</dd>
+
+  <dt id="registry">Registry</dt>
+  <dd>Groups tools, dispatches execution, reports availability. Owned by: tool layer (L04).</dd>
+</dl>
+
+<!-- ================================================================== -->
+<h2 id="constraints-and-validation">7. Constraints and Validation</h2>
+
+<dl>
+  <dt id="constraint">Constraint</dt>
+  <dd>Any deterministic enforcement applied to model output. Includes grammar, schema, JSON repair, enum normalization. Owned by: constraint layer (L05).</dd>
+
+  <dt id="decoder-constraint">DecoderConstraint</dt>
+  <dd>Constraint applied at token-generation time (GBNF grammar). Strongest guarantee. Owned by: constraint layer (L05).</dd>
+
+  <dt id="validation">Validation</dt>
+  <dd>Post-generation checking of output. Includes rule validation (deterministic) and semantic validation (inferential). Owned by: validate layer (L07).</dd>
+
+  <dt id="constraint-pipeline">ConstraintPipeline</dt>
+  <dd>Ordered sequence of constraint and validation stages applied to output. See <a href="constraints.html#constraint-pipeline">Constraints</a>.</dd>
+
+  <dt id="confidence">Confidence</dt>
+  <dd>Optional score on SystemResponse indicating output reliability. Sources: voting (RedundantLoop), validation pass rate, retrieval coverage. See <a href="constraints.html#confidence-model">Constraints</a>.</dd>
+
+  <dt id="retry-policy">RetryPolicy</dt>
+  <dd>Controls retry behavior on validation failure. Defines max attempts and backoff. Owned by: validate layer (L07).</dd>
+
+  <dt id="repair-strategy">RepairStrategy</dt>
+  <dd>Attempts to fix invalid output (e.g., close truncated JSON) before retrying inference. Owned by: validate layer (L07).</dd>
+</dl>
+
+<!-- ================================================================== -->
+<h2 id="failure-categories">8. Failure Categories</h2>
+
+<dl>
+  <dt id="inference-failure">InferenceFailure</dt>
+  <dd>Engine error or model unavailable. Owned by: inference layer (L01). See <a href="contracts.html#failure-taxonomy">Contracts</a>.</dd>
+
+  <dt id="tool-failure">ToolFailure</dt>
+  <dd>Tool missing, execution error, or timeout. Owned by: tool layer (L04). See <a href="contracts.html#failure-taxonomy">Contracts</a>.</dd>
+
+  <dt id="constraint-failure">ConstraintFailure</dt>
+  <dd>Grammar, schema, or JSON validity failure. Owned by: constraint layer (L05). See <a href="contracts.html#failure-taxonomy">Contracts</a>.</dd>
+
+  <dt id="validation-failure">ValidationFailure</dt>
+  <dd>Rule failure or semantic validation failure. Owned by: validate layer (L07). See <a href="contracts.html#failure-taxonomy">Contracts</a>.</dd>
+
+  <dt id="orchestration-failure">OrchestrationFailure</dt>
+  <dd>Plan step input mismatch or iteration limit exceeded. Owned by: orchestrate layer (L02). See <a href="contracts.html#failure-taxonomy">Contracts</a>.</dd>
+
+  <dt id="configuration-failure">ConfigurationFailure</dt>
+  <dd>Missing engine, missing required schema. See <a href="contracts.html#failure-taxonomy">Contracts</a>.</dd>
+
+  <dt id="cancellation">Cancellation</dt>
+  <dd>Timeout or context cancelled. See <a href="contracts.html#failure-taxonomy">Contracts</a>.</dd>
+</dl>
+
+<!-- ================================================================== -->
+<h2 id="memory">9. Memory</h2>
+
+<dl>
+  <dt id="conversation-memory">ConversationMemory</dt>
+  <dd>Persisted user/assistant message history for multi-turn loops. Owned by: memory layer (L09).</dd>
+
+  <dt id="working-memory">WorkingMemory</dt>
+  <dd>Per-execution transient artifacts: candidates, context blocks, tool results. Discarded after execution. Owned by: memory layer (L09).</dd>
+
+  <dt id="session-state">SessionState</dt>
+  <dd>Durable key-value store carrying decisions across steps within a session. Owned by: memory layer (L09).</dd>
+
+  <dt id="memory-policy">MemoryPolicy</dt>
+  <dd>Rules governing eviction, persistence, and ephemeral context handling per loop pattern.</dd>
+</dl>
+
+<!-- ================================================================== -->
+<h2 id="observability">10. Observability</h2>
+
+<dl>
+  <dt id="trace-recorder">TraceRecorder</dt>
+  <dd>Records execution traces with hierarchical spans. Owned by: observe layer (L10).</dd>
+
+  <dt id="event-log">EventLog</dt>
+  <dd>Records discrete events during execution. Owned by: observe layer (L10).</dd>
+
+  <dt id="metrics-collector">MetricsCollector</dt>
+  <dd>Collects numeric metrics (latency, token counts, costs). Owned by: observe layer (L10).</dd>
+
+  <dt id="correlation-ids">Correlation Ids</dt>
+  <dd>Set of identifiers linking events to requests: request_id, session_id, trace_id, span_id. See <a href="contracts.html#observability-correlation">Contracts</a>.</dd>
+</dl>
+
+<!-- ================================================================== -->
+<h2 id="prompt">11. Prompt</h2>
+
+<dl>
+  <dt id="prompt-provider">PromptProvider</dt>
+  <dd>Structural typing interface for prompt assembly: BuildSystemPrompt(ctx, SystemRequest) produces system message. Owned by: prompt layer (L08).</dd>
+
+  <dt id="template">Template</dt>
+  <dd>Parameterized prompt template with variable substitution. Owned by: prompt layer (L08).</dd>
+
+  <dt id="context-policy">ContextPolicy</dt>
+  <dd>Rules for placing retrieved context in prompt (position, source attribution). Owned by: prompt layer (L08).</dd>
+</dl>
+
+<!-- ================================================================== -->
+<h2 id="architecture">12. Architecture</h2>
+
+<dl>
+  <dt id="layer">Layer</dt>
+  <dd>Numbered directory under <code>layers/</code> forming a dependency DAG. Higher numbers may import lower, never reverse.</dd>
+
+  <dt id="adapter">Adapter</dt>
+  <dd>Thin boundary shell mapping external I/O to SystemRequest/SystemResponse. Adapters are cli, tui, api. No orchestration logic allowed.</dd>
+
+  <dt id="structural-typing">Structural Typing</dt>
+  <dd>Go pattern where orchestrate consumes interfaces without importing the implementing package. Compile-time safe, no coupling.</dd>
+</dl>
+
+</div><!-- /container -->
+<footer>pagantic - Probabilistic Agentic Control System</footer>
+</body>
+</html>
