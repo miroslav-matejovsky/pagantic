@@ -10,18 +10,56 @@
 // Grammar support passes GBNF grammar strings through to the inference engine
 // for decoder-level output constraints.
 //
+// # System Contracts
+//
+// SystemRequest and SystemResponse define the stable boundary API. Adapters
+// construct SystemRequest from external input and receive SystemResponse.
+// SystemError carries a FailureCategory from the canonical failure taxonomy.
+// Mode selects which orchestration pattern handles the request.
+//
+// # Execution Lifecycle
+//
+// Every request follows a state machine: INIT -> PLAN -> PREPARE -> EXECUTE ->
+// VALIDATE -> COMPLETE (or ERROR / CANCELLED). ExecutionState tracks position.
+// ExecutionContext carries per-request data through the lifecycle.
+//
+// # Planning
+//
+// Planner creates ExecutionPlan from SystemRequest. PlanExecutor executes
+// plans. This separation is an explicit boundary. PlanPolicy constrains
+// plan construction. PlanTrace records creation metadata.
+//
+// # Execution IR
+//
+// StepInput and StepOutput provide typed wrappers for data crossing step
+// boundaries inside PlanExecutor. CandidateIR is the canonical cross-step
+// representation unifying context.Chunk and rerank.Candidate.
+//
 // Key types:
 //   - AgentLoop
 //   - SpecializedLoop
 //   - ContextProvider
+//   - PromptProvider
 //   - ExecutionPlan
 //   - PlanExecutor
+//   - Planner
 //   - StepHandler
 //   - Step
 //   - RoutingStrategy
 //   - CandidateReranker
 //   - RedundantLoop
 //   - VotingStrategy
+//   - SystemRequest
+//   - SystemResponse
+//   - SystemError
+//   - Mode
+//   - FailureCategory
+//   - LifecycleState
+//   - ExecutionState
+//   - ExecutionContext
+//   - StepInput
+//   - StepOutput
+//   - CandidateIR
 //
 // ContextProvider is an optional interface that retrieves relevant context
 // messages before inference. The pagantic layers/03_context.ContextBuilder
@@ -34,4 +72,8 @@
 //
 // CandidateReranker follows the same structural typing pattern. The
 // rerank.Reranker type satisfies it without importing the rerank package.
+//
+// PromptProvider follows the same structural typing pattern. The
+// prompt.SystemPrompt and prompt.Template types can satisfy it without
+// importing orchestrate.
 package orchestrate
