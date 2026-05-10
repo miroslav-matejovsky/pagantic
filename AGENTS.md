@@ -45,3 +45,4 @@
 - Pipeline calls compound. Every token saved per call multiplies across runs.
 - No explanatory text in agent output unless a human will read it.
 - Return the minimum viable output that satisfies the task spec.
+- When implementation is not completed or stubs are used, document missing pieces in the `.todo` file with clear instructions in the root of the project.

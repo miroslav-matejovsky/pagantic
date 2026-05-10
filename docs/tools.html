@@ -15,6 +15,8 @@
   <a href="retrieval.html">Retrieval</a>
   <a href="tools.html">Tools</a>
   <a href="constraints.html">Constraints</a>
+  <a href="contracts.html">Contracts</a>
+  <a href="glossary.html">Glossary</a>
   <a href="https://github.com/miroslav-matejovsky/pagantic" target="_blank" style="margin-left: auto;">GitHub</a>
 </nav>
 
@@ -42,6 +44,7 @@
       <li><a href="#cli-tools">8. CLI Tools (TypeCLI)</a></li>
       <li><a href="#orchestration">9. Using Tools with Orchestration</a></li>
       <li><a href="#safety-observability">10. Safety and Observability</a></li>
+      <li><a href="#tool-safety">Tool Safety Contract</a></li>
     </ul>
   </div>
 
@@ -787,6 +790,138 @@ type ToolResult struct {
     <code>call_id</code> field lets you correlate start and end events
     for the same call.
   </div>
+
+<!-- ================================================================== -->
+<h2 id="tool-safety">Tool Safety Contract</h2>
+
+<p>
+  Tools are deterministic execution points with well-defined safety properties.
+  The safety contract formalizes isolation, idempotency, argument validation,
+  and interaction with retry behavior.
+</p>
+
+<h3 id="tool-safety-metadata">Tool Safety Metadata</h3>
+
+<p>
+  Each tool declares safety metadata that orchestration uses for execution decisions:
+</p>
+
+<pre><code><span class="comment">// Safety metadata for a tool</span>
+ToolSafety {
+    SideEffects   SideEffectLevel  <span class="comment">// none | read | write | external</span>
+    Idempotent    bool             <span class="comment">// Safe to retry without side effects</span>
+    Requires      []string         <span class="comment">// Required capabilities: "filesystem", "network", etc.</span>
+}
+</code></pre>
+
+<table>
+  <thead>
+    <tr><th>Side Effect Level</th><th>Description</th><th>Example</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>none</code></td><td>Pure computation, no I/O</td><td>Calculator, text formatter</td></tr>
+    <tr><td><code>read</code></td><td>Reads external state, no mutations</td><td>File reader, API query</td></tr>
+    <tr><td><code>write</code></td><td>Mutates local state</td><td>File writer, database insert</td></tr>
+    <tr><td><code>external</code></td><td>Calls external services with side effects</td><td>Email sender, webhook trigger</td></tr>
+  </tbody>
+</table>
+
+<h3 id="tool-idempotency">Idempotency and Retry</h3>
+
+<p>
+  Orchestration uses the idempotency flag to decide retry behavior when a tool call fails:
+</p>
+
+<ul>
+  <li><strong>Idempotent tools</strong> (<code>Idempotent: true</code>) - safe to retry automatically.
+    The orchestration loop can re-execute the tool call without risk of duplicate side effects.</li>
+  <li><strong>Non-idempotent tools</strong> (<code>Idempotent: false</code>) - retry requires explicit
+    approval or a different recovery path. The loop reports a
+    <a href="contracts.html#failure-taxonomy">ToolFailure</a> and lets the caller decide.</li>
+</ul>
+
+<div class="note">
+  <strong>Retry contract.</strong> Tool retries require idempotency. Non-idempotent tool
+  failures are terminal within the current loop iteration unless the caller provides
+  explicit recovery logic.
+</div>
+
+<h3 id="tool-arg-validation">Argument Validation</h3>
+
+<p>
+  Tools validate arguments deterministically before execution:
+</p>
+
+<ol>
+  <li><strong>Schema validation</strong> - arguments checked against the tool's parameter Schema</li>
+  <li><strong>Tool-specific checks</strong> - custom validation logic in the tool implementation (e.g., file path exists, URL is reachable)</li>
+  <li><strong>Fail-fast</strong> - validation errors return immediately without executing the tool body</li>
+</ol>
+
+<p>
+  Argument validation errors map to
+  <a href="contracts.html#failure-taxonomy">ToolFailure</a> with error code
+  <code>TOOL_EXECUTION_FAILED</code> and details indicating which argument failed.
+</p>
+
+<h3 id="tool-sandbox">Tool Sandbox</h3>
+
+<p>
+  ToolSandbox is a conceptual boundary defining what a tool is allowed to access:
+</p>
+
+<ul>
+  <li><strong>Filesystem constraints</strong> - which paths a tool can read/write</li>
+  <li><strong>Network constraints</strong> - which hosts/ports a tool can reach</li>
+  <li><strong>Process constraints</strong> - whether a tool can spawn subprocesses</li>
+</ul>
+
+<div class="tip">
+  <strong>Documentation-level.</strong> ToolSandbox is a conceptual model for reasoning
+  about tool safety. Runtime enforcement is not built in but can be implemented
+  via wrapper tools that check constraints before delegating to the inner tool.
+</div>
+
+<h3 id="tool-timeout">Timeout and Rate Limiting</h3>
+
+<ul>
+  <li><strong>ToolTimeoutPolicy</strong> - per-tool deadline. If a tool exceeds its timeout,
+    execution is cancelled and a ToolFailure with code <code>TOOL_TIMEOUT</code> is reported.</li>
+  <li><strong>ToolRateLimitPolicy</strong> - per-tool rate limit (documentation-level).
+    Limits calls per time window to prevent abuse of external APIs.</li>
+</ul>
+
+<h3 id="tool-unavailable">Mid-Loop Unavailability</h3>
+
+<p>
+  When a tool becomes unavailable during an active tool loop:
+</p>
+
+<ol>
+  <li>The tool's <code>Available()</code> check returns false</li>
+  <li>The registry reports the tool as unavailable</li>
+  <li>The orchestration loop receives a ToolFailure with code <code>TOOL_UNAVAILABLE</code></li>
+  <li>If other tools can satisfy the model's intent, the loop continues with available tools</li>
+  <li>If the unavailable tool is critical, the loop reports the failure to the caller</li>
+</ol>
+
+<h3 id="tool-observability">Correlation and Observability</h3>
+
+<p>
+  Tool execution events carry
+  <a href="contracts.html#observability-correlation">correlation identifiers</a>
+  linking them to the inference response that triggered the tool call:
+</p>
+
+<ul>
+  <li><code>request_id</code> - ties to the SystemRequest</li>
+  <li><code>tool_call_id</code> - matches the ToolCall.ID from the inference result</li>
+  <li><code>step_name</code> - when inside a PlanExecutor step</li>
+</ul>
+
+<p>
+  This enables full causality tracing: inference response -> tool call -> tool result -> next inference.
+</p>
 
 </div>
 

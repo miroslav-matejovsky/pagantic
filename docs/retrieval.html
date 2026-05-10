@@ -15,6 +15,8 @@
   <a href="retrieval.html">Retrieval</a>
   <a href="tools.html">Tools</a>
   <a href="constraints.html">Constraints</a>
+  <a href="contracts.html">Contracts</a>
+  <a href="glossary.html">Glossary</a>
   <a href="https://github.com/miroslav-matejovsky/pagantic" target="_blank" style="margin-left: auto;">GitHub</a>
 </nav>
 
@@ -40,6 +42,8 @@
       <li><a href="#candidate-reranker">6. CandidateReranker - Cross-Layer Integration</a></li>
       <li><a href="#full-pipeline">7. Full RAG Pipeline with PlanExecutor</a></li>
       <li><a href="#custom-retriever">8. Custom Retriever Implementation</a></li>
+      <li><a href="#score-semantics">Score Semantics Contract</a></li>
+      <li><a href="#consistency-model">Consistency Model</a></li>
     </ul>
   </div>
 
@@ -617,6 +621,120 @@ contextProvider := &amp;pctx.ContextBuilder{
     LLM-based scoring, then plug it into <code>Reranker</code>. The
     <code>SimpleScorer</code> is a drop-in placeholder for development.
   </div>
+
+<!-- ================================================================== -->
+<h2 id="score-semantics">Score Semantics Contract</h2>
+
+<p>
+  Scores appear on both <code>context.Chunk</code> and <code>rerank.Candidate</code>,
+  but they mean different things depending on who produced them.
+</p>
+
+<h3>RetrievalScore</h3>
+
+<p>
+  Assigned by a <a href="glossary.html#retriever">Retriever</a> during knowledge lookup.
+  The meaning depends entirely on the retriever implementation:
+</p>
+
+<table>
+  <thead>
+    <tr><th>Retriever Type</th><th>Score Meaning</th><th>Range</th><th>Higher Is Better</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>BM25 / keyword</td><td>Term frequency relevance</td><td>[0, unbounded)</td><td>Yes</td></tr>
+    <tr><td>Cosine similarity</td><td>Vector distance</td><td>[-1, 1]</td><td>Yes</td></tr>
+    <tr><td>InMemoryRetriever</td><td>Keyword overlap count</td><td>[0, N]</td><td>Yes</td></tr>
+  </tbody>
+</table>
+
+<div class="note">
+  <strong>Contract.</strong> Every Retriever implementation must document:
+  (1) what its score means, (2) what range it uses, and (3) whether higher is better.
+  Scores are comparable only within a single retriever - do not compare scores across
+  different retriever types.
+</div>
+
+<h3>RerankScore</h3>
+
+<p>
+  Assigned by a <a href="glossary.html#relevance-scorer">RelevanceScorer</a> after reranking.
+  Reranking produces a normalized relevance score:
+</p>
+
+<ul>
+  <li>Scores should be normalized to [0..1] when possible</li>
+  <li>If normalization is not possible, the scorer must document "scores comparable only within single scorer"</li>
+  <li>Higher is always better for rerank scores</li>
+</ul>
+
+<h3>Score Field Behavior</h3>
+
+<p>
+  When a Reranker processes candidates:
+</p>
+
+<ul>
+  <li>The Reranker <strong>overwrites</strong> <code>Candidate.Score</code> with the rerank score</li>
+  <li>The original retrieval score is not preserved unless the Reranker stores it in <code>Candidate.Metadata</code></li>
+  <li>Custom Reranker implementations that want to preserve original scores should copy them to metadata before overwriting</li>
+</ul>
+
+<div class="info">
+  <strong>Execution IR (Planned).</strong> <a href="architecture.html#execution-ir">CandidateIR</a>
+  is a planned typed wrapper for passing candidates across PlanExecutor step boundaries.
+  Current PlanExecutor chains steps via raw <code>any</code> (Step.Input/Output fields).
+  CandidateIR is available for optional use when callers want typed step boundaries;
+  conversion between <code>context.Chunk</code>, <code>rerank.Candidate</code>, and
+  <code>CandidateIR</code> happens in caller code.
+</div>
+
+<!-- ================================================================== -->
+<h2 id="consistency-model">Consistency Model</h2>
+
+<p>
+  Retrieval in pagantic follows a <strong>fresh-per-turn</strong> consistency model by default.
+</p>
+
+<h3>Default Behavior</h3>
+
+<ul>
+  <li>Context is retrieved fresh on every turn (AgentLoop) or every call (SpecializedLoop)</li>
+  <li>Retrieved context is <a href="glossary.html#working-memory">working memory</a> - ephemeral, not persisted</li>
+  <li>No caching between turns - the same query may return different results if the knowledge base changed</li>
+  <li>This ensures the model always sees current knowledge at the cost of repeated retrieval</li>
+</ul>
+
+<h3>Caching Policy (Extension Point)</h3>
+
+<p>
+  An optional caching layer can be placed in front of any Retriever:
+</p>
+
+<ul>
+  <li><strong>Cache key</strong>: query string (exact match or normalized)</li>
+  <li><strong>TTL</strong>: configurable per retriever</li>
+  <li><strong>Invalidation</strong>: on knowledge base update or TTL expiry</li>
+</ul>
+
+<div class="tip">
+  <strong>Not implemented.</strong> Caching is a documented extension point, not a built-in
+  feature. Implement caching as a Retriever wrapper that checks cache before delegating
+  to the underlying retriever.
+</div>
+
+<h3>Deduplication</h3>
+
+<p>
+  When multiple retrievers or multiple queries return overlapping results,
+  deduplication prevents redundant context:
+</p>
+
+<ul>
+  <li><strong>Dedup key</strong>: Source + content hash, or Source + chunk id</li>
+  <li>Applied by ContextBuilder before assembling context messages</li>
+  <li>Keeps the highest-scoring instance when duplicates are found</li>
+</ul>
 
 </div>
 

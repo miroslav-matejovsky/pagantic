@@ -15,6 +15,8 @@
   <a href="retrieval.html">Retrieval</a>
   <a href="tools.html">Tools</a>
   <a href="constraints.html">Constraints</a>
+  <a href="contracts.html">Contracts</a>
+  <a href="glossary.html">Glossary</a>
   <a href="https://github.com/miroslav-matejovsky/pagantic" target="_blank" style="margin-left: auto;">GitHub</a>
 </nav>
 
@@ -34,6 +36,7 @@
     <h4>Table of Contents</h4>
     <ul>
       <li><a href="#overview">Overview</a></li>
+      <li><a href="#lifecycle">Execution Lifecycle</a></li>
       <li>
         <a href="#agentloop">1. AgentLoop - Stateful Multi-Turn Chat</a>
         <ul>
@@ -42,6 +45,7 @@
           <li><a href="#agentloop-usage">Usage</a></li>
           <li><a href="#agentloop-ephemeral">Ephemeral Context Injection</a></li>
           <li><a href="#agentloop-structured">ChatStructured - Schema-Constrained Output</a></li>
+          <li><a href="#agentloop-memory">Memory Model</a></li>
         </ul>
       </li>
       <li>
@@ -51,10 +55,14 @@
           <li><a href="#specializedloop-config">Configuration</a></li>
           <li><a href="#specializedloop-usage">Usage</a></li>
           <li><a href="#specializedloop-when">When to Choose SpecializedLoop</a></li>
+          <li><a href="#specializedloop-memory">Memory Model</a></li>
         </ul>
       </li>
       <li>
-        <a href="#planexecutor">3. PlanExecutor - Multi-Step Pipeline</a>
+        <a href="#planner">3. Planner - Plan Creation</a>
+      </li>
+      <li>
+        <a href="#planexecutor">4. PlanExecutor - Multi-Step Pipeline</a>
         <ul>
           <li><a href="#planexecutor-types">Core Types</a></li>
           <li><a href="#planexecutor-handlers">Built-in Handlers</a></li>
@@ -63,17 +71,18 @@
         </ul>
       </li>
       <li>
-        <a href="#redundantloop">4. RedundantLoop - N-Version Inference with Voting</a>
+        <a href="#redundantloop">5. RedundantLoop - N-Version Inference with Voting</a>
         <ul>
           <li><a href="#redundantloop-internals">How It Works Internally</a></li>
           <li><a href="#redundantloop-voting">Voting Strategies</a></li>
           <li><a href="#redundantloop-custom-voting">Custom Voting</a></li>
           <li><a href="#redundantloop-usage">Usage</a></li>
           <li><a href="#redundantloop-when">When to Use</a></li>
+          <li><a href="#redundantloop-confidence">Confidence Propagation</a></li>
         </ul>
       </li>
-      <li><a href="#choosing">5. Choosing the Right Pattern</a></li>
-      <li><a href="#composing">6. Composing Patterns</a></li>
+      <li><a href="#choosing">6. Choosing the Right Pattern</a></li>
+      <li><a href="#composing">7. Composing Patterns</a></li>
     </ul>
   </div>
 
@@ -105,6 +114,93 @@
     <strong>Import path:</strong> All types live in
     <code>github.com/miroslav-matejovsky/pagantic/layers/02_orchestrate</code>,
     typically imported as <code>orchestrate</code>.
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- Execution Lifecycle -->
+  <!-- ============================================================ -->
+  <h2 id="lifecycle">Execution Lifecycle</h2>
+
+  <p>
+    Every orchestration pattern follows the
+    <a href="contracts.html#execution-lifecycle">execution lifecycle state machine</a>.
+    Each pattern traverses a subset of states. Understanding which states a pattern uses
+    helps reason about failure handling, retry behavior, and observability events.
+  </p>
+
+  <table>
+    <thead>
+      <tr><th>Pattern</th><th>States Traversed</th><th>Retry Path</th><th>Tool Loop</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>AgentLoop</strong></td>
+        <td>INIT -> PREPARE -> EXECUTE -> COMPLETE</td>
+        <td>EXECUTE -> VALIDATE -> EXECUTE (per turn)</td>
+        <td>Yes, within EXECUTE</td>
+      </tr>
+      <tr>
+        <td><strong>SpecializedLoop</strong></td>
+        <td>INIT -> PREPARE -> EXECUTE -> VALIDATE -> COMPLETE</td>
+        <td>VALIDATE -> EXECUTE</td>
+        <td>No</td>
+      </tr>
+      <tr>
+        <td><strong>PlanExecutor</strong></td>
+        <td>INIT -> PLAN -> PREPARE -> EXECUTE -> VALIDATE -> COMPLETE</td>
+        <td>Per-step: EXECUTE -> VALIDATE -> EXECUTE</td>
+        <td>Per step</td>
+      </tr>
+      <tr>
+        <td><strong>RedundantLoop</strong></td>
+        <td>INIT -> PREPARE -> EXECUTE -> VALIDATE -> COMPLETE</td>
+        <td>N/A (voting replaces retry)</td>
+        <td>No</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>Failure Categories per Pattern</h3>
+
+  <p>
+    Each pattern can emit and recover from specific
+    <a href="contracts.html#failure-taxonomy">failure categories</a>:
+  </p>
+
+  <table>
+    <thead>
+      <tr><th>Pattern</th><th>Can Emit</th><th>Can Recover From</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>AgentLoop</strong></td>
+        <td>InferenceFailure, ToolFailure, Cancellation</td>
+        <td>ToolFailure (retry tool call)</td>
+      </tr>
+      <tr>
+        <td><strong>SpecializedLoop</strong></td>
+        <td>InferenceFailure, ConstraintFailure, ValidationFailure, Cancellation</td>
+        <td>ConstraintFailure (repair), ValidationFailure (retry)</td>
+      </tr>
+      <tr>
+        <td><strong>PlanExecutor</strong></td>
+        <td>All categories</td>
+        <td>ConstraintFailure, ValidationFailure (per step), ToolFailure (if step uses tools)</td>
+      </tr>
+      <tr>
+        <td><strong>RedundantLoop</strong></td>
+        <td>InferenceFailure, ConstraintFailure, OrchestrationFailure, Cancellation</td>
+        <td>InferenceFailure (other replicas succeed), ConstraintFailure (repair per replica)</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="info">
+    <strong>RetryPolicy as lifecycle transition.</strong>
+    <a href="contracts.html#execution-lifecycle">RetryPolicy</a> drives the
+    EXECUTE -> VALIDATE -> EXECUTE cycle. Each retry increments
+    <code>ExecutionState.Attempt</code>. When max attempts are exhausted, the state
+    transitions to ERROR with the last failure category.
   </div>
 
   <!-- ============================================================ -->
@@ -296,6 +392,42 @@ result, err := agent.ChatStructured(ctx, "Analyze: great product!", schema)
     GBNF grammars constrain output format, which only makes sense for structured extraction.
   </div>
 
+  <h3 id="agentloop-memory">Memory Model</h3>
+
+  <p>
+    AgentLoop uses three distinct memory categories. Understanding which artifacts
+    are persisted and which are ephemeral is critical for correct multi-turn behavior.
+  </p>
+
+  <table>
+    <thead>
+      <tr><th>Category</th><th>Lifetime</th><th>Contents</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong><a href="glossary.html#conversation-memory">ConversationMemory</a></strong></td>
+        <td>Persisted across turns</td>
+        <td>User and assistant messages in ConversationBuffer. Grows with each Chat() call.</td>
+      </tr>
+      <tr>
+        <td><strong><a href="glossary.html#working-memory">WorkingMemory</a></strong></td>
+        <td>Per-turn transient</td>
+        <td>Retrieved context blocks, tool results, intermediate inference artifacts. Discarded after each turn.</td>
+      </tr>
+      <tr>
+        <td><strong><a href="glossary.html#session-state">SessionState</a></strong></td>
+        <td>Durable across turns</td>
+        <td>Key-value decisions that carry forward (e.g., user preferences, resolved entities). Thread-safe.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="note">
+    <strong>Ephemeral context.</strong> Context injected via ContextProvider is working memory -
+    it is retrieved fresh each turn and never stored in ConversationBuffer. This is a
+    <a href="glossary.html#memory-policy">MemoryPolicy</a> decision, not a special case.
+  </div>
+
   <!-- ============================================================ -->
   <!-- SpecializedLoop -->
   <!-- ============================================================ -->
@@ -419,10 +551,94 @@ result, err := sl.Call(ctx, "Latest advances in quantum computing")
     </tbody>
   </table>
 
+  <h3 id="specializedloop-memory">Memory Model</h3>
+
+  <p>
+    SpecializedLoop is stateless - it creates a fresh inner loop for each call.
+    All memory is transient:
+  </p>
+
+  <ul>
+    <li><strong>ConversationMemory</strong> - none. No message history persisted.</li>
+    <li><strong>WorkingMemory</strong> - retrieved context and inference result. Discarded after call returns.</li>
+    <li><strong>SessionState</strong> - not used. Each call is independent.</li>
+  </ul>
+
+  <div class="tip">
+    <strong>Stateless by design.</strong> SpecializedLoop retrieves context once, injects it
+    into a fresh loop, runs inference, validates, and returns. Nothing persists between calls.
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- Planner -->
+  <!-- ============================================================ -->
+  <h2 id="planner">3. Planner - Plan Creation</h2>
+
+  <p>
+    A <a href="glossary.html#agent">Planner</a> creates an
+    <a href="glossary.html#execution-plan">ExecutionPlan</a> from a
+    <a href="glossary.html#system-request">SystemRequest</a>.
+    PlanExecutor executes plans - it does not create them. The separation between
+    plan creation and plan execution is an explicit architectural boundary.
+  </p>
+
+  <h3>Planner Interface</h3>
+
+  <pre><code><span class="comment">// Planner creates an ExecutionPlan from a SystemRequest.</span>
+<span class="comment">// Implementations range from static plan builders to LLM-based planners.</span>
+type Planner interface {
+    CreatePlan(ctx context.Context, req SystemRequest) (ExecutionPlan, error)
+}
+</code></pre>
+
+  <h3>PlanPolicy</h3>
+
+  <p>
+    Constraints on plan construction:
+  </p>
+
+  <pre><code>type PlanPolicy struct {
+    MaxSteps        int             <span class="comment">// Upper bound on plan length</span>
+    AllowedStepTypes []StepType     <span class="comment">// Which step types this mode permits</span>
+    RequireLinear   bool            <span class="comment">// If true, no branching/parallel steps</span>
+    TimeoutPerStep  time.Duration   <span class="comment">// Per-step deadline</span>
+}
+</code></pre>
+
+  <h3>PlanTrace</h3>
+
+  <p>
+    Metadata attached to a plan for observability and debugging:
+  </p>
+
+  <pre><code>type PlanTrace struct {
+    PlannerID   string      <span class="comment">// Which planner created this plan</span>
+    Rationale   string      <span class="comment">// Why these steps were chosen</span>
+    CreatedAt   time.Time
+    StepCount   int
+}
+</code></pre>
+
+  <h3>Routing</h3>
+
+  <p>
+    Adapters route requests through a single facade. When <code>mode=plan</code>,
+    the facade calls the configured Planner to produce an ExecutionPlan, then passes
+    it to PlanExecutor. When a plan is provided directly (e.g., manually authored),
+    the Planner step is skipped.
+  </p>
+
+  <div class="info">
+    <strong>Placeholder interface.</strong> Planner is currently a documentation-level
+    abstraction. The interface defines the contract without requiring an LLM-based
+    implementation. Static plan builders that return hardcoded ExecutionPlans satisfy
+    the Planner interface.
+  </div>
+
   <!-- ============================================================ -->
   <!-- PlanExecutor -->
   <!-- ============================================================ -->
-  <h2 id="planexecutor">3. PlanExecutor - Multi-Step Pipeline</h2>
+  <h2 id="planexecutor">4. PlanExecutor - Multi-Step Pipeline</h2>
 
   <p>
     For complex workflows with typed steps. Each step has a type, handler, input, and output.
@@ -639,7 +855,7 @@ executor := orchestrate.NewPlanExecutor(map[orchestrate.StepType]orchestrate.Ste
   <!-- ============================================================ -->
   <!-- RedundantLoop -->
   <!-- ============================================================ -->
-  <h2 id="redundantloop">4. RedundantLoop - N-Version Inference with Voting</h2>
+  <h2 id="redundantloop">5. RedundantLoop - N-Version Inference with Voting</h2>
 
   <p>
     Runs the same inference N times and picks the best result by voting. Implements
@@ -848,10 +1064,37 @@ fmt.Printf("Total tokens: %d\n", result.Usage.OutputTokens)
     high concurrency, consider wrapping with parallel execution.
   </div>
 
+  <h3 id="redundantloop-confidence">Confidence Propagation</h3>
+
+  <p>
+    RedundantLoop produces a <a href="glossary.html#confidence">Confidence</a> score
+    based on voting agreement. This score is propagated into
+    <a href="contracts.html#system-response">SystemResponse.Confidence</a> with
+    <code>ConfidenceSource = "voting"</code>.
+  </p>
+
+  <ul>
+    <li><strong>MajorityVote</strong> - confidence = (votes for winner) / N</li>
+    <li><strong>ConsensusVote</strong> - confidence = 1.0 if all agree, 0.0 otherwise</li>
+    <li><strong>Custom voting</strong> - confidence computed by VotingStrategy implementation</li>
+  </ul>
+
+  <p>
+    Confidence is not just a loop-local result. It flows into the SystemResponse so
+    callers can use it as a quality gate or informational signal.
+  </p>
+
+  <div class="note">
+    <strong>Confidence sources.</strong> Voting confidence is one of three possible sources.
+    Validation pass rate and retrieval coverage can also contribute. See
+    <a href="constraints.html#confidence-model">Constraints: Confidence Model</a> for the
+    unified confidence framework.
+  </div>
+
   <!-- ============================================================ -->
   <!-- Choosing the Right Pattern -->
   <!-- ============================================================ -->
-  <h2 id="choosing">5. Choosing the Right Pattern</h2>
+  <h2 id="choosing">6. Choosing the Right Pattern</h2>
 
   <table>
     <thead>
@@ -893,7 +1136,7 @@ fmt.Printf("Total tokens: %d\n", result.Usage.OutputTokens)
   <!-- ============================================================ -->
   <!-- Composing Patterns -->
   <!-- ============================================================ -->
-  <h2 id="composing">6. Composing Patterns</h2>
+  <h2 id="composing">7. Composing Patterns</h2>
 
   <p>
     The four patterns are designed to compose. Each higher-level pattern builds on simpler ones:

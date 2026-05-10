@@ -15,6 +15,8 @@
   <a href="retrieval.html">Retrieval</a>
   <a href="tools.html">Tools</a>
   <a href="constraints.html">Constraints</a>
+  <a href="contracts.html">Contracts</a>
+  <a href="glossary.html">Glossary</a>
   <a href="https://github.com/miroslav-matejovsky/pagantic" target="_blank" style="margin-left: auto;">GitHub</a>
 </nav>
 
@@ -36,8 +38,11 @@
     <li><a href="#adapter-pattern">4. Adapter Pattern</a></li>
     <li><a href="#core-types">5. Core Domain Types</a></li>
     <li><a href="#engine-abstraction">6. Engine Abstraction (kronk)</a></li>
-    <li><a href="#observability">7. Observability Integration</a></li>
-    <li><a href="#design-principles">8. Design Principles</a></li>
+    <li><a href="#system-contracts">7. System Contracts</a></li>
+    <li><a href="#execution-ir">8. Execution IR</a></li>
+    <li><a href="#observability">9. Observability Integration</a></li>
+    <li><a href="#prompt-integration">10. Prompt Layer Integration</a></li>
+    <li><a href="#design-principles">11. Design Principles</a></li>
   </ul>
 </div>
 
@@ -556,7 +561,195 @@ engine := kronk.NewAdapter(krn, nil) <span class="comment">// satisfies inferenc
 </div>
 
 <!-- ================================================================== -->
-<h2 id="observability">7. Observability Integration</h2>
+<h2 id="system-contracts">7. System Contracts</h2>
+
+<p>
+  pagantic defines stable boundary contracts at the system edge. Every adapter maps
+  external input into a <a href="glossary.html#system-request">SystemRequest</a>
+  and maps a <a href="glossary.html#system-response">SystemResponse</a> back to the user.
+  No adapter accesses internal layers directly.
+</p>
+
+<h3>Boundary Types</h3>
+
+<table>
+  <thead>
+    <tr><th>Contract</th><th>Direction</th><th>Purpose</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>SystemRequest</code></td>
+      <td>Adapter -> System</td>
+      <td>Carries messages, mode, execution hints, output contract, correlation ids</td>
+    </tr>
+    <tr>
+      <td><code>SystemResponse</code></td>
+      <td>System -> Adapter</td>
+      <td>Returns content, structured output, confidence, validation result, token usage, error</td>
+    </tr>
+    <tr>
+      <td><code>SystemError</code></td>
+      <td>System -> Adapter</td>
+      <td>Canonical error with category from <a href="contracts.html#failure-taxonomy">failure taxonomy</a>, retryable flag, details</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>Execution Modes</h3>
+
+<p>
+  SystemRequest carries a <code>Mode</code> field that selects the orchestration pattern:
+</p>
+
+<table>
+  <thead>
+    <tr><th>Mode</th><th>Pattern</th><th>Description</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>chat</code></td><td>AgentLoop</td><td>Multi-turn conversation with tool loop</td></tr>
+    <tr><td><code>structured</code></td><td>SpecializedLoop</td><td>Single-shot schema-constrained output</td></tr>
+    <tr><td><code>plan</code></td><td>PlanExecutor</td><td>Multi-step typed pipeline</td></tr>
+    <tr><td><code>redundant</code></td><td>RedundantLoop</td><td>N-version inference with voting</td></tr>
+  </tbody>
+</table>
+
+<h3>Execution Lifecycle</h3>
+
+<p>
+  Every request follows a lifecycle state machine with defined states and transitions:
+</p>
+
+<div class="arch-diagram">
+INIT -> PLAN -> PREPARE -> EXECUTE -> VALIDATE -> COMPLETE
+  |       |        |          |          |
+  +-------+--------+----------+----------+---> ERROR
+  +-------+--------+----------+----------+---> CANCELLED
+</div>
+
+<p>
+  Each state emits observability events. RetryPolicy is a lifecycle transition:
+  EXECUTE -> VALIDATE -> (back to EXECUTE on repair/retry, or ERROR on terminal failure).
+  Full lifecycle details in <a href="contracts.html#execution-lifecycle">Contracts: Execution Lifecycle</a>.
+</p>
+
+<h3>Failure Taxonomy</h3>
+
+<p>
+  All errors map to one of seven categories. Each category has a stable error code pattern,
+  retryable flag, and recovery path:
+</p>
+
+<table>
+  <thead>
+    <tr><th>Category</th><th>Emitting Layer</th><th>Retryable</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>InferenceFailure</td><td>inference (L01)</td><td>Sometimes</td></tr>
+    <tr><td>ToolFailure</td><td>tool (L04)</td><td>If idempotent</td></tr>
+    <tr><td>ConstraintFailure</td><td>constraint (L05)</td><td>Yes</td></tr>
+    <tr><td>ValidationFailure</td><td>validate (L07)</td><td>Yes</td></tr>
+    <tr><td>OrchestrationFailure</td><td>orchestrate (L02)</td><td>No</td></tr>
+    <tr><td>ConfigurationFailure</td><td>Any layer at init</td><td>No</td></tr>
+    <tr><td>Cancellation</td><td>Any layer</td><td>No</td></tr>
+  </tbody>
+</table>
+
+<p>
+  Full failure taxonomy with error codes and recovery paths in
+  <a href="contracts.html#failure-taxonomy">Contracts: Failure Taxonomy</a>.
+</p>
+
+<div class="info">
+  <strong>Canonical reference.</strong> The full contract specifications, lifecycle state
+  definitions, and failure taxonomy live in <a href="contracts.html">Contracts</a>.
+  This section provides an architectural summary.
+</div>
+
+<!-- ================================================================== -->
+<h2 id="execution-ir">8. Execution IR</h2>
+
+<p>
+  When data crosses step boundaries inside PlanExecutor, it uses a canonical
+  intermediate representation (IR). The IR lives in the orchestrate layer and
+  provides common field sets that avoid per-layer type conversion noise.
+</p>
+
+<h3>IR Types</h3>
+
+<table>
+  <thead>
+    <tr><th>Type</th><th>Purpose</th><th>Key Fields</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>StepInput</code></td>
+      <td>Data entering a Step</td>
+      <td>Tagged wrapper: may hold messages, candidates, context, or tool results</td>
+    </tr>
+    <tr>
+      <td><code>StepOutput</code></td>
+      <td>Data leaving a Step</td>
+      <td>Tagged wrapper: carries results forward to next Step</td>
+    </tr>
+    <tr>
+      <td><code>CandidateIR</code></td>
+      <td>Unified candidate across steps</td>
+      <td>content, source, score, metadata</td>
+    </tr>
+    <tr>
+      <td><code>ContextIR</code></td>
+      <td>Retrieved context with provenance</td>
+      <td>List of chunks/messages with source tracking</td>
+    </tr>
+    <tr>
+      <td><code>ToolCallIR</code> / <code>ToolResultIR</code></td>
+      <td>Tool interaction records</td>
+      <td>Already defined in core as ToolCall; documented here as part of IR</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>Score Semantics</h3>
+
+<p>
+  CandidateIR carries a <code>score</code> field. Score meaning depends on who produced it:
+</p>
+
+<ul>
+  <li><strong>RetrievalScore</strong> - assigned by a Retriever. Meaning depends on implementation
+    (BM25, cosine similarity, etc.). Comparable only within a single retriever.</li>
+  <li><strong>RerankScore</strong> - assigned by a RelevanceScorer after reranking. Normalized to
+    [0..1] when possible, or documented as "comparable within single scorer".</li>
+</ul>
+
+<div class="note">
+  <strong>Score contract.</strong> Every Retriever must document what its score means and
+  whether higher is better. A Reranker must document whether it overwrites the original
+  score or writes a separate field. See <a href="retrieval.html#score-semantics">Retrieval: Score Semantics</a>.
+</div>
+
+<h3>Conversion Responsibilities</h3>
+
+<p>
+  The orchestrate layer owns the IR types. Other layers produce and consume their own
+  native types (e.g., <code>context.Chunk</code>, <code>rerank.Candidate</code>).
+  Conversion happens at integration sites - user code that wires layers together:
+</p>
+
+<ul>
+  <li><code>context.Chunk</code> -> <code>CandidateIR</code>: user code maps Chunk fields to CandidateIR at the boundary between context retrieval and reranking steps</li>
+  <li><code>rerank.Candidate</code> -> <code>CandidateIR</code>: user code maps Candidate to CandidateIR when passing rerank results into subsequent pipeline steps</li>
+  <li><code>core.ToolCall</code> -> <code>ToolCallIR</code>: direct mapping, same underlying type</li>
+</ul>
+
+<div class="tip">
+  <strong>Layer rules preserved.</strong> Orchestrate owns the IR. Context and rerank layers
+  do not import orchestrate. Conversion is done by user code at integration sites via
+  structural typing. No layer dependency violations.
+</div>
+
+<!-- ================================================================== -->
+<h2 id="observability">9. Observability Integration</h2>
 
 <p>
   Any layer can record events through the <code>observe</code> package. The
@@ -646,8 +839,97 @@ type CostTracker interface {
   deep-copied on read and write to prevent aliasing bugs.
 </div>
 
+<h3>Correlation Model</h3>
+
+<p>
+  All observability events carry correlation identifiers that link events to requests,
+  sessions, and execution spans:
+</p>
+
+<pre><code><span class="comment">// Correlation identifiers on every event</span>
+CorrelationContext {
+    RequestID       string  <span class="comment">// Stable per SystemRequest</span>
+    SessionID       string  <span class="comment">// Stable per conversation (AgentLoop)</span>
+    TraceID         string  <span class="comment">// Distributed tracing root</span>
+    SpanID          string  <span class="comment">// Current execution unit</span>
+    ParentSpanID    string  <span class="comment">// Parent in span hierarchy</span>
+    CausedBy        string  <span class="comment">// Causal link: tool_call_id, step_name</span>
+}
+</code></pre>
+
+<h3>Required Event Fields</h3>
+
+<p>
+  Every event must include:
+</p>
+
+<ul>
+  <li><code>request_id</code> - always present</li>
+  <li><code>session_id</code> - when inside AgentLoop</li>
+  <li><code>step_name</code> - when inside PlanExecutor</li>
+  <li><code>tool_call_id</code> - when tool-related</li>
+</ul>
+
+<p>
+  Inference events additionally include: message_count, tool_defs_count, schema_present,
+  grammar_present, temperature. Tool events include the tool_call_id from the inference
+  response that triggered the tool call, establishing causality.
+</p>
+
+<div class="tip">
+  <strong>Full timeline reconstruction.</strong> With correlation ids on all events, you can
+  reconstruct the complete request execution timeline. Tool start/end events link back to
+  the inference response that emitted the tool call via <code>tool_call_id</code>.
+  Full event schemas in <a href="contracts.html#observability-correlation">Contracts: Observability Correlation</a>.
+</div>
+
 <!-- ================================================================== -->
-<h2 id="design-principles">8. Design Principles</h2>
+<h2 id="prompt-integration">10. Prompt Layer Integration</h2>
+
+<p>
+  The prompt layer (L08) shapes model behavior through structured prompt construction.
+  Orchestration patterns consume prompts through a structural typing interface rather
+  than raw strings.
+</p>
+
+<h3>PromptProvider Pattern</h3>
+
+<pre><code><span class="comment">// Structural typing interface consumed by orchestrate:</span>
+type PromptProvider interface {
+    BuildSystemPrompt() (core.Message, error)
+}
+</code></pre>
+
+<p>
+  Prompt layer implementations that expose <code>BuildSystemPrompt() (core.Message, error)</code>
+  satisfy this interface without importing orchestrate - same structural typing pattern as
+  <a href="#structural-typing">ContextProvider and CandidateReranker</a>. The existing
+  <code>SystemPrompt.Build()</code> and <code>Template.Render()</code> use different
+  signatures; production code bridges between them or implements the interface directly.
+</p>
+
+<h3>Context Placement Policy</h3>
+
+<p>
+  When retrieved context is injected into prompts, placement follows
+  <code>ContextPolicy</code> rules:
+</p>
+
+<ul>
+  <li>Retrieved context is placed before the user message in the message sequence</li>
+  <li>Sources are attributed in the context block for traceability</li>
+  <li>Context blocks are ephemeral per-turn and not persisted in conversation memory</li>
+</ul>
+
+<div class="info">
+  <strong>String convenience.</strong> Orchestration patterns accept a raw
+  <code>SystemPrompt</code> string as a convenience default. PromptProvider is the
+  primary mechanism for production use where prompt assembly needs to be structured,
+  testable, and policy-driven.
+</div>
+
+<!-- ================================================================== -->
+<h2 id="design-principles">11. Design Principles</h2>
 
 <h3>Deterministic Control Around Probabilistic Inference</h3>
 

@@ -15,6 +15,8 @@
   <a href="retrieval.html">Retrieval</a>
   <a href="tools.html">Tools</a>
   <a href="constraints.html">Constraints</a>
+  <a href="contracts.html">Contracts</a>
+  <a href="glossary.html">Glossary</a>
   <a href="https://github.com/miroslav-matejovsky/pagantic" target="_blank" class="github-link">GitHub</a>
 </nav>
 
@@ -644,6 +646,31 @@ task test
 
 # Install Go tools
 task go-tools</code></pre>
+
+<!-- SYSTEM CONTRACTS -->
+<h2 id="system-contracts">System Contracts</h2>
+
+<p>
+  pagantic defines stable boundary contracts at the system edge. Adapters map external
+  input into a <a href="glossary.html#system-request">SystemRequest</a> and map
+  <a href="glossary.html#system-response">SystemResponse</a> back to the user.
+  No adapter accesses internal layers directly.
+</p>
+
+<table>
+  <tr><th>Contract</th><th>Purpose</th></tr>
+  <tr><td><a href="contracts.html#system-request">SystemRequest</a></td><td>Input envelope: messages, mode, hints, output contract, correlation ids</td></tr>
+  <tr><td><a href="contracts.html#system-response">SystemResponse</a></td><td>Output envelope: content, structured output, confidence, validation, error</td></tr>
+  <tr><td><a href="contracts.html#system-error">SystemError</a></td><td>Canonical error with failure category, retryable flag, details</td></tr>
+  <tr><td><a href="contracts.html#execution-lifecycle">Execution Lifecycle</a></td><td>State machine: INIT -> PLAN -> PREPARE -> EXECUTE -> VALIDATE -> COMPLETE</td></tr>
+  <tr><td><a href="contracts.html#failure-taxonomy">Failure Taxonomy</a></td><td>Seven error categories with stable codes and recovery paths</td></tr>
+  <tr><td><a href="contracts.html#observability-correlation">Observability Correlation</a></td><td>request_id, session_id, trace_id, span_id for full timeline reconstruction</td></tr>
+</table>
+
+<p>
+  Full specifications in <a href="contracts.html">Contracts</a>.
+  Term definitions in <a href="glossary.html">Glossary</a>.
+</p>
 
 <!-- DESIGN -->
 <h2 id="design">Design Principles</h2>
