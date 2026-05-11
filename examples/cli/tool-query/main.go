@@ -114,9 +114,18 @@ func (c *calcTool) Definition() core.ToolDefinition {
 }
 
 func (c *calcTool) Execute(args map[string]any) (string, error) {
-	op, _ := args["operation"].(string)
-	a, _ := args["a"].(float64)
-	b, _ := args["b"].(float64)
+	op, ok := args["operation"].(string)
+	if !ok || op == "" {
+		return "", fmt.Errorf("missing or invalid argument: operation (string required)")
+	}
+	a, ok := args["a"].(float64)
+	if !ok {
+		return "", fmt.Errorf("missing or invalid argument: a (number required)")
+	}
+	b, ok := args["b"].(float64)
+	if !ok {
+		return "", fmt.Errorf("missing or invalid argument: b (number required)")
+	}
 
 	switch op {
 	case "add":

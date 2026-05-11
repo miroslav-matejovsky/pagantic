@@ -69,6 +69,9 @@ repl := tui.NewAgentREPL(tui.AgentConfig{
 repl.AddCommand(tui.Command{
     Name: "remember",
     Run: func(ctx context.Context, args []string) error {
+        if len(args) < 2 {
+            return fmt.Errorf("usage: remember <key> <value...>")
+        }
         session.Set(args[0], strings.Join(args[1:], " "))
         return nil
     },
@@ -77,8 +80,16 @@ repl.AddCommand(tui.Command{
 repl.AddCommand(tui.Command{
     Name: "recall",
     Run: func(ctx context.Context, args []string) error {
+        if len(args) == 0 {
+            return fmt.Errorf("usage: recall <key>")
+        }
         val, ok := session.Get(args[0])
-        // print val
+        if !ok {
+            tui.Warnf("key %q not found", args[0])
+            return nil
+        }
+        tui.Infof("%s = %v", args[0], val)
+        return nil
     },
 })
 
