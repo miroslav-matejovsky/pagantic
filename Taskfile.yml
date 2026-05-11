@@ -90,7 +90,7 @@ tasks:
       - task: fmt
       - task: lint
       - task: arch-lint
-      # - task: deadcode  # TODO: re-enable after stub layers (context, rerank, validate, prompt) are wired into AgentLoop
+      - task: deadcode
       - task: test
       - echo all done
 
