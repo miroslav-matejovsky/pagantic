@@ -11,6 +11,7 @@ import (
 	inference "github.com/miroslav-matejovsky/pagantic/layers/01_inference"
 	orchestrate "github.com/miroslav-matejovsky/pagantic/layers/02_orchestrate"
 	tool "github.com/miroslav-matejovsky/pagantic/layers/04_tool"
+	"golang.org/x/term"
 )
 
 // DefaultTimeout is applied when RunConfig.Timeout is zero.
@@ -81,7 +82,7 @@ func (r *Runner) Run(ctx context.Context, prompt string) error {
 		stream = &inference.StreamHandler{
 			OnContent: func(text string) {
 				streamed = true
-				fmt.Fprint(out, text)
+				_, _ = fmt.Fprint(out, text)
 			},
 			OnToolCall: func(name, argsJSON string) {
 				fmt.Fprintf(os.Stderr, "[tool] %s %s\n", name, argsJSON)
@@ -105,7 +106,7 @@ func (r *Runner) Run(ctx context.Context, prompt string) error {
 	if r.cfg.Stream == nil {
 		if streamed {
 			// Default stream printed tokens incrementally; add a trailing newline.
-			fmt.Fprintln(r.cfg.Out)
+			_, _ = fmt.Fprintln(r.cfg.Out)
 		} else {
 			// Engine did not emit streaming tokens (e.g. test stub); print full content.
 			_, err = fmt.Fprintln(r.cfg.Out, result.Content)
@@ -120,10 +121,15 @@ func (r *Runner) Run(ctx context.Context, prompt string) error {
 }
 
 // ReadPrompt builds a prompt from command-line arguments. If args is empty,
-// reads all of stdin. Returns the trimmed prompt string.
+// reads all of stdin. Returns an error immediately when stdin is an interactive
+// terminal (no pipe), to avoid blocking the caller.
 func ReadPrompt(args []string, stdin io.Reader) (string, error) {
 	if len(args) > 0 {
 		return strings.Join(args, " "), nil
+	}
+
+	if f, ok := stdin.(*os.File); ok && term.IsTerminal(int(f.Fd())) {
+		return "", fmt.Errorf("cli: no prompt provided (pass as arguments or pipe to stdin)")
 	}
 
 	data, err := io.ReadAll(stdin)

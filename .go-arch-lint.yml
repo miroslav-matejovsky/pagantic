@@ -12,6 +12,8 @@ excludeFiles:
   - "^.*\/test\/.*$"
 
 vendors:
+  xterm:
+    in: "golang.org/x/term"
   kronk-sdk:
     in: "github.com/ardanlabs/kronk/sdk/**"
 
@@ -62,3 +64,4 @@ deps:
     mayDependOn: [L00_core, L02_orchestrate, L10_observe]
   cli:
     mayDependOn: [L00_core, L01_inference, L02_orchestrate, L04_tool]
+    canUse: [xterm]

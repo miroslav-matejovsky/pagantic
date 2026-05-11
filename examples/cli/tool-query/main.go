@@ -39,14 +39,16 @@ import (
 
 const llmModel = "unsloth/gemma-4-E4B-it"
 
+// defaultQuery is used when no arguments are passed. It exercises both tools.
+const defaultQuery = "What is 15 plus 27? Also greet Alice."
+
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 
 	prompt, err := cli.ReadPrompt(os.Args[1:], os.Stdin)
 	if err != nil {
-		// Default prompt exercises both tools.
-		prompt = "What is 15 plus 27? Also greet Alice."
+		prompt = defaultQuery
 	}
 
 	krn, cleanup, err := kronk.Load(ctx, kronk.Config{ModelSource: llmModel})
