@@ -5,4 +5,5 @@ bin/
 
 .test-results/
 
-.local
+.localmemory-chat
+pipeline-query
