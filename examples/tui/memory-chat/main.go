@@ -52,7 +52,7 @@ import (
 
 const llmModel = "unsloth/gemma-4-E4B-it"
 
-const systemPrompt = "You are helpful assistant. Be concise."
+const systemPrompt = "You are a helpful assistant. Be concise."
 
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
@@ -210,6 +210,7 @@ func main() {
 			fmt.Println()
 
 			scanner := bufio.NewScanner(os.Stdin)
+			scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
 			for {
 				line, err := tui.FPrompt(scanner, os.Stdout, tui.Bold("mchat>")+" ")
 				if err != nil {
