@@ -16,10 +16,17 @@ import (
 type stubEngine struct {
 	response string
 	captCtx  context.Context
+	handler  *inference.StreamHandler
+}
+
+func (s *stubEngine) WithStreamHandler(h *inference.StreamHandler) inference.Engine {
+	s.handler = h
+	return s
 }
 
 func (s *stubEngine) Infer(ctx context.Context, _ inference.Request) (*inference.Result, error) {
 	s.captCtx = ctx
+	s.handler.EmitContent(s.response)
 	return &inference.Result{Content: s.response}, nil
 }
 
