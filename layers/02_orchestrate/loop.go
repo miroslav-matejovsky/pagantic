@@ -302,27 +302,6 @@ func (al *AgentLoop) injectContext(messages []core.Message) {
 	}
 }
 
-func resolveMessages(requestMessages []core.Message, result *inference.Result) []core.Message {
-	if result != nil && len(result.Messages) > 0 {
-		return cloneMessages(result.Messages)
-	}
-
-	messages := cloneMessages(requestMessages)
-	if result == nil {
-		return messages
-	}
-
-	assistant := core.Message{
-		Role:      core.RoleAssistant,
-		Content:   result.Content,
-		ToolCalls: cloneToolCalls(result.ToolCalls),
-	}
-	if assistant.Content != "" || len(assistant.ToolCalls) > 0 {
-		messages = append(messages, assistant)
-	}
-	return messages
-}
-
 func cloneMessages(messages []core.Message) []core.Message {
 	if len(messages) == 0 {
 		return nil

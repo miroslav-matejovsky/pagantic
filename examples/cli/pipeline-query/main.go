@@ -36,6 +36,10 @@
 //  3. Infer: the model answers using reranked context and is told to emit JSON.
 //  4. Validate: a JSON check ensures the final answer is valid JSON text.
 //
+// Error handling also shows the canonical orchestrate.SystemError wrapper by
+// printing both SystemError.Error() and the unwrapped cause when execution
+// fails.
+//
 // Compare with rerank-query:
 //
 //   - rerank-query builds custom rerank and infer handlers inline.
@@ -128,7 +132,17 @@ func main() {
 
 	results, err := executor.Execute(ctx, plan)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		sysErr := &orchestrate.SystemError{
+			Code:      "PIPELINE_FAILED",
+			Category:  orchestrate.OrchestrationFailure,
+			Retryable: false,
+			Message:   "pipeline execution failed",
+			CausedBy:  err,
+		}
+		fmt.Fprintf(os.Stderr, "System error: %s\n", sysErr.Error())
+		if cause := sysErr.Unwrap(); cause != nil {
+			fmt.Fprintf(os.Stderr, "Caused by: %v\n", cause)
+		}
 		os.Exit(1)
 	}
 
