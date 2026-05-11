@@ -77,8 +77,8 @@ tasks:
     cmds:
       - pwsh -NoProfile -NonInteractive -File tasks/test-integration.ps1
 
-  fast:
-    desc: Run all checks and tests except integration tests, which can be slow due to LLM model downloads. Use 'task all' to include integration tests.
+  all-no-test:
+    desc: Run all checks except tests. Use 'task fast' to include unit tests without integration tests, or 'task all' to include all tests.
     silent: true
     cmds:
       - task: clean
@@ -91,6 +91,13 @@ tasks:
       - task: lint
       - task: arch-lint
       - task: deadcode
+      - echo all-no-test done
+
+  fast:
+    desc: Run all checks and tests except integration tests, which can be slow due to LLM model downloads. Use 'task all' to include integration tests.
+    silent: true
+    cmds:
+      - task: all-no-test
       - task: test
       - echo all done
 
@@ -98,7 +105,7 @@ tasks:
     desc: Run all checks and tests, including integration tests. Note that integration tests can be slow due to LLM model downloads, so use 'task fast' for a quicker check that excludes integration tests.
     silent: true
     cmds:
-      - task: fast
+      - task: all-no-test
       - task: test-integration
       - echo all done
 
