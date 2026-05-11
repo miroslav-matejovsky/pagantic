@@ -37,6 +37,27 @@ func (f *fakeEngine) ModelInfo() inference.ModelInfo {
 	return inference.ModelInfo{Name: "fake"}
 }
 
+func resolveMessages(requestMessages []core.Message, result *inference.Result) []core.Message {
+	if result != nil && len(result.Messages) > 0 {
+		return cloneMessages(result.Messages)
+	}
+
+	messages := cloneMessages(requestMessages)
+	if result == nil {
+		return messages
+	}
+
+	assistant := core.Message{
+		Role:      core.RoleAssistant,
+		Content:   result.Content,
+		ToolCalls: cloneToolCalls(result.ToolCalls),
+	}
+	if assistant.Content != "" || len(assistant.ToolCalls) > 0 {
+		messages = append(messages, assistant)
+	}
+	return messages
+}
+
 // fakeTool records calls and returns fixed output.
 type fakeTool struct {
 	definition core.ToolDefinition
