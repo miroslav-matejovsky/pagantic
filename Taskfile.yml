@@ -171,3 +171,8 @@ tasks:
       - echo "goman for better man pages"
       - go install github.com/appliedgocode/goman@latest
       - echo done
+
+  release:
+    desc: Create a git tag for a new release (pass version as args, e.g. v1.2.3 or 1.2.3, and it will be prefixed with 'v' if not already)
+    cmds:
+      - pwsh -NoProfile -NonInteractive -File tasks/release.ps1 -Version {{.CLI_ARGS}}
