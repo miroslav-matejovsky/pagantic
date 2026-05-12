@@ -99,7 +99,7 @@ tasks:
     cmds:
       - task: all-no-test
       - task: test
-      - echo all done
+      - echo fast done
 
   all:
     desc: Run all checks and tests, including integration tests. Note that integration tests can be slow due to LLM model downloads, so use 'task fast' for a quicker check that excludes integration tests.

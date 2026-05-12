@@ -74,7 +74,9 @@ func main() {
 			}
 			return kronk.NewAdapter(krn, nil), cleanup, nil
 		},
-		Registry: registry,
+		Registry:          registry,
+		MaxTokens:         2048,
+		MaxToolIterations: 20,
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)

@@ -36,9 +36,9 @@ type AgentConfig struct {
 	Registry *tool.Registry
 	// LocalDir is the working directory for file I/O (cloned repos, etc.).
 	LocalDir string
-	// MaxTokens limits response length. Zero uses 2048.
+	// MaxTokens limits response length. Required; must be > 0.
 	MaxTokens int
-	// MaxToolIterations limits tool-call loop rounds. Zero uses 20.
+	// MaxToolIterations limits tool-call loop rounds. Required; must be > 0.
 	MaxToolIterations int
 }
 
@@ -63,13 +63,20 @@ type AgentREPL struct {
 
 // NewAgentREPL creates an AgentREPL from the given config.
 // Defaults LocalDir to ".local" if empty.
-// Returns error if EngineLoader or Registry is nil.
+// Returns error if EngineLoader or Registry is nil, or if MaxTokens or
+// MaxToolIterations are not > 0.
 func NewAgentREPL(cfg AgentConfig) (*AgentREPL, error) {
 	if cfg.EngineLoader == nil {
 		return nil, fmt.Errorf("tui: AgentConfig.EngineLoader must not be nil")
 	}
 	if cfg.Registry == nil {
 		return nil, fmt.Errorf("tui: AgentConfig.Registry must not be nil")
+	}
+	if cfg.MaxTokens <= 0 {
+		return nil, fmt.Errorf("tui: AgentConfig.MaxTokens must be > 0")
+	}
+	if cfg.MaxToolIterations <= 0 {
+		return nil, fmt.Errorf("tui: AgentConfig.MaxToolIterations must be > 0")
 	}
 	if cfg.LocalDir == "" {
 		cfg.LocalDir = ".local"
@@ -182,22 +189,13 @@ func (t *AgentREPL) runChat(ctx context.Context) error {
 	_, _ = fmt.Fprintln(t.repl.Out, "Type 'exit' or 'quit' to return to main menu.")
 	_, _ = fmt.Fprintln(t.repl.Out)
 
-	maxTokens := t.cfg.MaxTokens
-	if maxTokens <= 0 {
-		maxTokens = 2048
-	}
-	maxToolIterations := t.cfg.MaxToolIterations
-	if maxToolIterations <= 0 {
-		maxToolIterations = 20
-	}
-
 	chatAgent, err := orchestrate.NewAgentLoop(orchestrate.LoopConfig{
 		SystemPrompt:      t.buildSystemPrompt(),
 		Engine:            t.engine,
 		Tools:             t.cfg.Registry,
 		Stream:            TerminalRenderer(t.repl.Out),
-		MaxTokens:         maxTokens,
-		MaxToolIterations: maxToolIterations,
+		MaxTokens:         t.cfg.MaxTokens,
+		MaxToolIterations: t.cfg.MaxToolIterations,
 		OnToolResult: func(name, output string) {
 			_, _ = fmt.Fprintf(t.repl.Out, "\n%s\n%s\n", Green("Tool: "+name), SanitizeOutput(output))
 		},

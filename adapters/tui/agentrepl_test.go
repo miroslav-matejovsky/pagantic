@@ -45,10 +45,12 @@ func newTestREPL(t *testing.T, loader func(context.Context) (inference.Engine, f
 	out := &bytes.Buffer{}
 	errOut := &bytes.Buffer{}
 	ar, err := NewAgentREPL(AgentConfig{
-		Title:        "Test",
-		SystemPrompt: "You are a test agent.",
-		EngineLoader: loader,
-		Registry:     stubRegistry,
+		Title:             "Test",
+		SystemPrompt:      "You are a test agent.",
+		EngineLoader:      loader,
+		Registry:          stubRegistry,
+		MaxTokens:         2048,
+		MaxToolIterations: 20,
 	})
 	require.NoError(t, err)
 	ar.repl.Out = out
@@ -57,17 +59,39 @@ func newTestREPL(t *testing.T, loader func(context.Context) (inference.Engine, f
 }
 
 func TestNewAgentREPL_ErrorOnNilEngineLoader(t *testing.T) {
-	_, err := NewAgentREPL(AgentConfig{Registry: stubRegistry})
+	_, err := NewAgentREPL(AgentConfig{Registry: stubRegistry, MaxTokens: 2048, MaxToolIterations: 20})
 	require.Error(t, err)
 	require.ErrorContains(t, err, "EngineLoader")
 }
 
 func TestNewAgentREPL_ErrorOnNilRegistry(t *testing.T) {
 	_, err := NewAgentREPL(AgentConfig{
-		EngineLoader: stubLoader(nil),
+		EngineLoader:      stubLoader(nil),
+		MaxTokens:         2048,
+		MaxToolIterations: 20,
 	})
 	require.Error(t, err)
 	require.ErrorContains(t, err, "Registry")
+}
+
+func TestNewAgentREPL_ErrorOnZeroMaxTokens(t *testing.T) {
+	_, err := NewAgentREPL(AgentConfig{
+		EngineLoader:      stubLoader(nil),
+		Registry:          stubRegistry,
+		MaxToolIterations: 20,
+	})
+	require.Error(t, err)
+	require.ErrorContains(t, err, "MaxTokens")
+}
+
+func TestNewAgentREPL_ErrorOnZeroMaxToolIterations(t *testing.T) {
+	_, err := NewAgentREPL(AgentConfig{
+		EngineLoader: stubLoader(nil),
+		Registry:     stubRegistry,
+		MaxTokens:    2048,
+	})
+	require.Error(t, err)
+	require.ErrorContains(t, err, "MaxToolIterations")
 }
 
 func TestAgentREPL_DefaultLocalDir(t *testing.T) {
@@ -79,11 +103,13 @@ func TestAgentREPL_DefaultLocalDir(t *testing.T) {
 
 func TestAgentREPL_CustomLocalDir(t *testing.T) {
 	ar, err := NewAgentREPL(AgentConfig{
-		Title:        "Test",
-		SystemPrompt: "x",
-		EngineLoader: stubLoader(&fakeEngine{}),
-		Registry:     stubRegistry,
-		LocalDir:     "C:\\work\\mydir",
+		Title:             "Test",
+		SystemPrompt:      "x",
+		EngineLoader:      stubLoader(&fakeEngine{}),
+		Registry:          stubRegistry,
+		LocalDir:          "C:\\work\\mydir",
+		MaxTokens:         2048,
+		MaxToolIterations: 20,
 	})
 	require.NoError(t, err)
 	if ar.LocalDir() != "C:\\work\\mydir" {
@@ -220,8 +246,10 @@ func TestBuildSystemPrompt_WithInstructions(t *testing.T) {
 		Instructions: []prompt.InstructionSet{
 			{Name: "Safety", Rules: []string{"Do not harm", "Be honest"}},
 		},
-		EngineLoader: stubLoader(nil),
-		Registry:     stubRegistry,
+		EngineLoader:      stubLoader(nil),
+		Registry:          stubRegistry,
+		MaxTokens:         2048,
+		MaxToolIterations: 20,
 	})
 	require.NoError(t, err)
 

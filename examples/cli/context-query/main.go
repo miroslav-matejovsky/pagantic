@@ -92,10 +92,12 @@ func main() {
 	// calling the inference engine. Wiring ContextProvider through RunConfig
 	// keeps the example thin and guarantees the deadline is always set.
 	runner, err := cli.NewRunner(cli.RunConfig{
-		Engine:          engine,
-		SystemPrompt:    "You are a helpful assistant. Answer questions using only the provided context. If the context does not contain relevant information, say so.",
-		ContextProvider: contextProvider,
-		Out:             os.Stdout,
+		Engine:            engine,
+		SystemPrompt:      "You are a helpful assistant. Answer questions using only the provided context. If the context does not contain relevant information, say so.",
+		ContextProvider:   contextProvider,
+		Out:               os.Stdout,
+		MaxTokens:         2048,
+		MaxToolIterations: 20,
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)

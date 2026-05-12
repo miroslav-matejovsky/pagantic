@@ -14,13 +14,10 @@ import (
 	observe "github.com/miroslav-matejovsky/pagantic/layers/10_observe"
 )
 
-// ContextProvider retrieves context messages for a query.
-// The pagantic layers/03_context.ContextBuilder (typically imported with alias
-// pctx) satisfies this interface via Go structural typing - no explicit
-// interface declaration needed in that package.
-type ContextProvider interface {
-	Build(ctx context.Context, query string) ([]core.Message, error)
-}
+// ContextProvider is a type alias for core.ContextProvider.
+// Preserved here so existing code referencing orchestrate.ContextProvider
+// compiles without changes; the canonical definition is in core.
+type ContextProvider = core.ContextProvider
 
 // LoopConfig configures agent loop.
 type LoopConfig struct {

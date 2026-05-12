@@ -21,7 +21,7 @@ if (-not $Version.StartsWith("v")) {
 }
 
 # Validate format: must be vx.y.z or similar (v followed by at least one dot-separated number)
-if ($Version -notmatch '^v\d+\.\d+\.\d+') {
+if ($Version -notmatch '^v\d+\.\d+\.\d+$') {
   Write-Error "Error: Invalid version format '$Version'. Expected format: vx.y.z or x.y.z"
   exit 1
 }

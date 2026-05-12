@@ -35,59 +35,77 @@ func (s *stubEngine) ModelInfo() inference.ModelInfo {
 }
 
 func TestNewRunner_ErrorOnNilEngine(t *testing.T) {
-	_, err := NewRunner(RunConfig{})
+	_, err := NewRunner(RunConfig{MaxTokens: 2048, MaxToolIterations: 20})
 	require.Error(t, err)
 	require.ErrorContains(t, err, "Engine")
 }
 
-func TestRunner_Run_EmptyPrompt(t *testing.T) {
-	r, err := NewRunner(RunConfig{Engine: &stubEngine{}})
-	require.NoError(t, err)
+func TestNewRunner_ErrorOnZeroMaxTokens(t *testing.T) {
+	_, err := NewRunner(RunConfig{Engine: &stubEngine{}, MaxToolIterations: 20})
+	require.Error(t, err)
+	require.ErrorContains(t, err, "MaxTokens")
+}
 
-	err = r.Run(context.Background(), "")
+func TestNewRunner_ErrorOnZeroMaxToolIterations(t *testing.T) {
+	_, err := NewRunner(RunConfig{Engine: &stubEngine{}, MaxTokens: 2048})
+	require.Error(t, err)
+	require.ErrorContains(t, err, "MaxToolIterations")
+}
+
+func newTestRunner(t *testing.T, cfg RunConfig) *Runner {
+	t.Helper()
+	r, err := NewRunner(cfg)
+	require.NoError(t, err)
+	return r
+}
+
+func TestRunner_Run_EmptyPrompt(t *testing.T) {
+	r := newTestRunner(t, RunConfig{Engine: &stubEngine{}, MaxTokens: 2048, MaxToolIterations: 20})
+
+	err := r.Run(context.Background(), "")
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "empty prompt")
 }
 
 func TestRunner_Run_WhitespacePrompt(t *testing.T) {
-	r, err := NewRunner(RunConfig{Engine: &stubEngine{}})
-	require.NoError(t, err)
+	r := newTestRunner(t, RunConfig{Engine: &stubEngine{}, MaxTokens: 2048, MaxToolIterations: 20})
 
-	err = r.Run(context.Background(), "   \n  ")
+	err := r.Run(context.Background(), "   \n  ")
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "empty prompt")
 }
 
 func TestRunner_Run_WritesOutput(t *testing.T) {
 	var buf bytes.Buffer
-	r, err := NewRunner(RunConfig{
-		Engine: &stubEngine{response: "hello world"},
-		Out:    &buf,
+	r := newTestRunner(t, RunConfig{
+		Engine:            &stubEngine{response: "hello world"},
+		Out:               &buf,
+		MaxTokens:         2048,
+		MaxToolIterations: 20,
 	})
-	require.NoError(t, err)
 
-	err = r.Run(context.Background(), "say hello")
+	err := r.Run(context.Background(), "say hello")
 	require.NoError(t, err)
 	require.Equal(t, "hello world\n", buf.String())
 }
 
 func TestRunner_Run_NilOutDefaultsToStdout(t *testing.T) {
 	// With nil Out, NewRunner should default to os.Stdout - no panic, no lost output.
-	r, err := NewRunner(RunConfig{Engine: &stubEngine{response: "ok"}})
-	require.NoError(t, err)
+	r := newTestRunner(t, RunConfig{Engine: &stubEngine{response: "ok"}, MaxTokens: 2048, MaxToolIterations: 20})
 	require.Equal(t, os.Stdout, r.cfg.Out)
 }
 
 func TestRunner_Run_NoOutputWhenStreaming(t *testing.T) {
 	var buf bytes.Buffer
-	r, err := NewRunner(RunConfig{
-		Engine: &stubEngine{response: "streamed"},
-		Out:    &buf,
-		Stream: &inference.StreamHandler{},
+	r := newTestRunner(t, RunConfig{
+		Engine:            &stubEngine{response: "streamed"},
+		Out:               &buf,
+		Stream:            &inference.StreamHandler{},
+		MaxTokens:         2048,
+		MaxToolIterations: 20,
 	})
-	require.NoError(t, err)
 
-	err = r.Run(context.Background(), "say hello")
+	err := r.Run(context.Background(), "say hello")
 	require.NoError(t, err)
 	require.Empty(t, buf.String(), "should not write to Out when streaming")
 }
@@ -95,10 +113,9 @@ func TestRunner_Run_NoOutputWhenStreaming(t *testing.T) {
 func TestRunner_Run_AlwaysHasDeadline(t *testing.T) {
 	// Engine requires a context with deadline - verify Run always sets one.
 	eng := &stubEngine{response: "ok"}
-	r, err := NewRunner(RunConfig{Engine: eng})
-	require.NoError(t, err)
+	r := newTestRunner(t, RunConfig{Engine: eng, MaxTokens: 2048, MaxToolIterations: 20})
 
-	err = r.Run(context.Background(), "hello")
+	err := r.Run(context.Background(), "hello")
 	require.NoError(t, err)
 
 	_, hasDeadline := eng.captCtx.Deadline()
@@ -107,11 +124,10 @@ func TestRunner_Run_AlwaysHasDeadline(t *testing.T) {
 
 func TestRunner_Run_DefaultTimeoutApplied(t *testing.T) {
 	eng := &stubEngine{response: "ok"}
-	r, err := NewRunner(RunConfig{Engine: eng})
-	require.NoError(t, err)
+	r := newTestRunner(t, RunConfig{Engine: eng, MaxTokens: 2048, MaxToolIterations: 20})
 
 	before := time.Now().Add(DefaultTimeout)
-	err = r.Run(context.Background(), "hello")
+	err := r.Run(context.Background(), "hello")
 	require.NoError(t, err)
 
 	deadline, ok := eng.captCtx.Deadline()
@@ -124,11 +140,10 @@ func TestRunner_Run_DefaultTimeoutApplied(t *testing.T) {
 func TestRunner_Run_CustomTimeoutOverridesDefault(t *testing.T) {
 	eng := &stubEngine{response: "ok"}
 	custom := 5 * time.Second
-	r, err := NewRunner(RunConfig{Engine: eng, Timeout: custom})
-	require.NoError(t, err)
+	r := newTestRunner(t, RunConfig{Engine: eng, Timeout: custom, MaxTokens: 2048, MaxToolIterations: 20})
 
 	before := time.Now().Add(custom)
-	err = r.Run(context.Background(), "hello")
+	err := r.Run(context.Background(), "hello")
 	require.NoError(t, err)
 
 	deadline, ok := eng.captCtx.Deadline()
@@ -156,7 +171,14 @@ func TestReadPrompt_EmptyStdin(t *testing.T) {
 
 	_, err := ReadPrompt(nil, stdin)
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "no prompt provided")
+	require.ErrorIs(t, err, ErrNoPrompt)
+}
+
+func TestReadPrompt_NoPromptSentinel(t *testing.T) {
+	// Both empty-stdin and TTY paths must wrap ErrNoPrompt so callers can
+	// distinguish "nothing provided" from real I/O failures.
+	_, err := ReadPrompt(nil, strings.NewReader(""))
+	require.ErrorIs(t, err, ErrNoPrompt, "empty stdin must wrap ErrNoPrompt")
 }
 
 func TestReadPrompt_PipedStdin_DoesNotBlock(t *testing.T) {
@@ -174,7 +196,7 @@ func TestReadPrompt_PipedStdin_DoesNotBlock(t *testing.T) {
 	require.Equal(t, "piped content", prompt)
 }
 
-func TestReadPrompt_InteractiveStdin_FailsFast(t *testing.T) {
+func TestReadPrompt_NonFileReader_ReadsNormally(t *testing.T) {
 	// os.Stdin in test processes is NOT a terminal (tests run with piped I/O),
 	// so we use /dev/null or NUL as a stand-in non-terminal *os.File to verify
 	// non-terminal files still read normally, and rely on the Pipe test above

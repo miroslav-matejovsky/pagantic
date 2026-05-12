@@ -2,12 +2,14 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"strings"
 	"time"
 
+	core "github.com/miroslav-matejovsky/pagantic/layers/00_core"
 	inference "github.com/miroslav-matejovsky/pagantic/layers/01_inference"
 	orchestrate "github.com/miroslav-matejovsky/pagantic/layers/02_orchestrate"
 	tool "github.com/miroslav-matejovsky/pagantic/layers/04_tool"
@@ -18,11 +20,10 @@ import (
 // The kronk inference engine requires a context with a deadline.
 const DefaultTimeout = 120 * time.Second
 
-// DefaultMaxTokens is used by Runner when RunConfig.MaxTokens is zero.
-const DefaultMaxTokens = 2048
-
-// DefaultMaxToolIterations is used by Runner when RunConfig.MaxToolIterations is zero.
-const DefaultMaxToolIterations = 20
+// ErrNoPrompt is returned by ReadPrompt when no prompt is provided.
+// Callers may check for this error with errors.Is to distinguish "nothing
+// provided" from real I/O failures.
+var ErrNoPrompt = errors.New("cli: no prompt provided")
 
 // ANSI escape codes for default stream rendering.
 const (
@@ -41,16 +42,16 @@ type RunConfig struct {
 	// Registry provides tools for the agent loop. May be nil.
 	Registry *tool.Registry
 	// ContextProvider retrieves context before each inference call. May be nil.
-	ContextProvider orchestrate.ContextProvider
+	ContextProvider core.ContextProvider
 	// Stream receives streaming tokens during inference. May be nil.
 	Stream *inference.StreamHandler
 	// Timeout limits total execution time. Zero uses DefaultTimeout (120s).
 	Timeout time.Duration
 	// Out is the output writer. Defaults to os.Stdout when nil.
 	Out io.Writer
-	// MaxTokens limits response length. Zero uses DefaultMaxTokens (2048).
+	// MaxTokens limits response length. Required; must be > 0.
 	MaxTokens int
-	// MaxToolIterations limits tool-call loop rounds. Zero uses DefaultMaxToolIterations (20).
+	// MaxToolIterations limits tool-call loop rounds. Required; must be > 0.
 	MaxToolIterations int
 }
 
@@ -60,11 +61,17 @@ type Runner struct {
 }
 
 // NewRunner creates a Runner from config.
-// Returns error if Engine is nil.
+// Returns error if Engine is nil, MaxTokens <= 0, or MaxToolIterations <= 0.
 // Out defaults to os.Stdout when nil.
 func NewRunner(cfg RunConfig) (*Runner, error) {
 	if cfg.Engine == nil {
 		return nil, fmt.Errorf("cli: RunConfig.Engine must not be nil")
+	}
+	if cfg.MaxTokens <= 0 {
+		return nil, fmt.Errorf("cli: RunConfig.MaxTokens must be > 0")
+	}
+	if cfg.MaxToolIterations <= 0 {
+		return nil, fmt.Errorf("cli: RunConfig.MaxToolIterations must be > 0")
 	}
 	if cfg.Out == nil {
 		cfg.Out = os.Stdout
@@ -92,6 +99,7 @@ func (r *Runner) Run(ctx context.Context, prompt string) error {
 
 	// Use the caller-provided stream handler, or build a default one that
 	// streams reasoning (grey), content, and tool calls (green) to Out.
+	// ANSI colors are only used when Out is an interactive terminal.
 	stream := r.cfg.Stream
 	var wroteAnyStream, streamedContent bool
 	var onToolResult func(string, string)
@@ -99,10 +107,14 @@ func (r *Runner) Run(ctx context.Context, prompt string) error {
 		info := r.cfg.Engine.ModelInfo()
 		fmt.Fprintf(os.Stderr, "model: %s  context: %d tokens\n\n", info.Name, info.ContextWindow)
 		out := r.cfg.Out
+		var grey, green, cyan, rst string
+		if f, ok := out.(*os.File); ok && term.IsTerminal(int(f.Fd())) {
+			grey, green, cyan, rst = ansiGrey, ansiGreen, ansiCyan, ansiReset
+		}
 		stream = &inference.StreamHandler{
 			OnReasoning: func(text string) {
 				wroteAnyStream = true
-				_, _ = fmt.Fprint(out, ansiGrey+text+ansiReset)
+				_, _ = fmt.Fprint(out, grey+text+rst)
 			},
 			OnContent: func(text string) {
 				wroteAnyStream = true
@@ -110,21 +122,12 @@ func (r *Runner) Run(ctx context.Context, prompt string) error {
 				_, _ = fmt.Fprint(out, text)
 			},
 			OnToolCall: func(name, argsJSON string) {
-				_, _ = fmt.Fprintf(out, "\n%s[TOOL] %s(%s)%s\n", ansiGreen, name, argsJSON, ansiReset)
+				_, _ = fmt.Fprintf(out, "\n%s[TOOL] %s(%s)%s\n", green, name, argsJSON, rst)
 			},
 		}
 		onToolResult = func(name, output string) {
-			_, _ = fmt.Fprintf(out, "%s[RESULT] %s: %s%s\n", ansiCyan, name, output, ansiReset)
+			_, _ = fmt.Fprintf(out, "%s[RESULT] %s: %s%s\n", cyan, name, output, rst)
 		}
-	}
-
-	maxTokens := r.cfg.MaxTokens
-	if maxTokens <= 0 {
-		maxTokens = DefaultMaxTokens
-	}
-	maxToolIterations := r.cfg.MaxToolIterations
-	if maxToolIterations <= 0 {
-		maxToolIterations = DefaultMaxToolIterations
 	}
 
 	agent, err := orchestrate.NewAgentLoop(orchestrate.LoopConfig{
@@ -133,8 +136,8 @@ func (r *Runner) Run(ctx context.Context, prompt string) error {
 		Tools:             r.cfg.Registry,
 		Stream:            stream,
 		ContextProvider:   r.cfg.ContextProvider,
-		MaxTokens:         maxTokens,
-		MaxToolIterations: maxToolIterations,
+		MaxTokens:         r.cfg.MaxTokens,
+		MaxToolIterations: r.cfg.MaxToolIterations,
 		OnToolResult:      onToolResult,
 	})
 	if err != nil {
@@ -178,7 +181,7 @@ func ReadPrompt(args []string, stdin io.Reader) (string, error) {
 	}
 
 	if f, ok := stdin.(*os.File); ok && term.IsTerminal(int(f.Fd())) {
-		return "", fmt.Errorf("cli: no prompt provided (pass as arguments or pipe to stdin)")
+		return "", fmt.Errorf("%w (pass as arguments or pipe to stdin)", ErrNoPrompt)
 	}
 
 	data, err := io.ReadAll(stdin)
@@ -188,7 +191,7 @@ func ReadPrompt(args []string, stdin io.Reader) (string, error) {
 
 	prompt := strings.TrimSpace(string(data))
 	if prompt == "" {
-		return "", fmt.Errorf("cli: no prompt provided (pass as arguments or pipe to stdin)")
+		return "", fmt.Errorf("%w (pass as arguments or pipe to stdin)", ErrNoPrompt)
 	}
 
 	return prompt, nil

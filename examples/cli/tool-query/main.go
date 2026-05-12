@@ -27,6 +27,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/signal"
@@ -48,6 +49,10 @@ func main() {
 
 	prompt, err := cli.ReadPrompt(os.Args[1:], os.Stdin)
 	if err != nil {
+		if !errors.Is(err, cli.ErrNoPrompt) {
+			fmt.Fprintf(os.Stderr, "Error reading prompt: %v\n", err)
+			os.Exit(1)
+		}
 		prompt = defaultQuery
 	}
 
@@ -69,10 +74,12 @@ func main() {
 	fmt.Fprintln(os.Stderr)
 
 	runner, err := cli.NewRunner(cli.RunConfig{
-		Engine:       engine,
-		Registry:     registry,
-		SystemPrompt: "You are a helpful assistant with access to tools. Use them when needed.",
-		Out:          os.Stdout,
+		Engine:            engine,
+		Registry:          registry,
+		SystemPrompt:      "You are a helpful assistant with access to tools. Use them when needed.",
+		Out:               os.Stdout,
+		MaxTokens:         2048,
+		MaxToolIterations: 20,
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
