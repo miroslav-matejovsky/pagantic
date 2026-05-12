@@ -87,11 +87,15 @@ func main() {
 
 	engine := kronk.NewAdapter(krn, nil)
 
-	runner := cli.NewRunner(cli.RunConfig{
+	runner, err := cli.NewRunner(cli.RunConfig{
 		Engine:       engine,
 		SystemPrompt: systemPrompt,
 		Out:          os.Stdout,
 	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
 
 	if err := runner.Run(ctx, userPrompt); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)

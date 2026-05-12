@@ -24,6 +24,14 @@ const DefaultMaxTokens = 2048
 // DefaultMaxToolIterations is used by Runner when RunConfig.MaxToolIterations is zero.
 const DefaultMaxToolIterations = 20
 
+// ANSI escape codes for default stream rendering.
+const (
+	ansiReset = "\033[0m"
+	ansiGrey  = "\033[90m"
+	ansiGreen = "\033[92m"
+	ansiCyan  = "\033[96m"
+)
+
 // RunConfig configures a single-shot CLI execution.
 type RunConfig struct {
 	// Engine is the inference engine to use. Required.
@@ -51,16 +59,17 @@ type Runner struct {
 	cfg RunConfig
 }
 
-// NewRunner creates a Runner from config. Panics if Engine is nil.
+// NewRunner creates a Runner from config.
+// Returns error if Engine is nil.
 // Out defaults to os.Stdout when nil.
-func NewRunner(cfg RunConfig) *Runner {
+func NewRunner(cfg RunConfig) (*Runner, error) {
 	if cfg.Engine == nil {
-		panic("cli: RunConfig.Engine must not be nil")
+		return nil, fmt.Errorf("cli: RunConfig.Engine must not be nil")
 	}
 	if cfg.Out == nil {
 		cfg.Out = os.Stdout
 	}
-	return &Runner{cfg: cfg}
+	return &Runner{cfg: cfg}, nil
 }
 
 // Run executes a single inference call with the given prompt and writes
@@ -82,21 +91,30 @@ func (r *Runner) Run(ctx context.Context, prompt string) error {
 	defer cancel()
 
 	// Use the caller-provided stream handler, or build a default one that
-	// prints model info and streams tokens to Out as they arrive.
+	// streams reasoning (grey), content, and tool calls (green) to Out.
 	stream := r.cfg.Stream
-	var streamed bool
+	var wroteAnyStream, streamedContent bool
+	var onToolResult func(string, string)
 	if stream == nil {
 		info := r.cfg.Engine.ModelInfo()
 		fmt.Fprintf(os.Stderr, "model: %s  context: %d tokens\n\n", info.Name, info.ContextWindow)
 		out := r.cfg.Out
 		stream = &inference.StreamHandler{
+			OnReasoning: func(text string) {
+				wroteAnyStream = true
+				_, _ = fmt.Fprint(out, ansiGrey+text+ansiReset)
+			},
 			OnContent: func(text string) {
-				streamed = true
+				wroteAnyStream = true
+				streamedContent = true
 				_, _ = fmt.Fprint(out, text)
 			},
 			OnToolCall: func(name, argsJSON string) {
-				fmt.Fprintf(os.Stderr, "[tool] %s %s\n", name, argsJSON)
+				_, _ = fmt.Fprintf(out, "\n%s[TOOL] %s(%s)%s\n", ansiGreen, name, argsJSON, ansiReset)
 			},
+		}
+		onToolResult = func(name, output string) {
+			_, _ = fmt.Fprintf(out, "%s[RESULT] %s: %s%s\n", ansiCyan, name, output, ansiReset)
 		}
 	}
 
@@ -117,6 +135,7 @@ func (r *Runner) Run(ctx context.Context, prompt string) error {
 		ContextProvider:   r.cfg.ContextProvider,
 		MaxTokens:         maxTokens,
 		MaxToolIterations: maxToolIterations,
+		OnToolResult:      onToolResult,
 	})
 	if err != nil {
 		return fmt.Errorf("cli: %w", err)
@@ -128,14 +147,20 @@ func (r *Runner) Run(ctx context.Context, prompt string) error {
 	}
 
 	if r.cfg.Stream == nil {
-		if streamed {
-			// Default stream printed tokens incrementally; add a trailing newline.
+		if streamedContent {
+			// Content was streamed incrementally; add trailing newline.
 			_, _ = fmt.Fprintln(r.cfg.Out)
 		} else {
-			// Engine did not emit streaming tokens (e.g. test stub); print full content.
-			_, err = fmt.Fprintln(r.cfg.Out, result.Content)
-			if err != nil {
-				return fmt.Errorf("cli: write output: %w", err)
+			if wroteAnyStream {
+				// Reasoning was streamed but content was not; add separator newline.
+				_, _ = fmt.Fprintln(r.cfg.Out)
+			}
+			if result.Content != "" {
+				// No content streaming (stub engine or reasoning-only); print full content.
+				_, err = fmt.Fprintln(r.cfg.Out, result.Content)
+				if err != nil {
+					return fmt.Errorf("cli: write output: %w", err)
+				}
 			}
 		}
 	}

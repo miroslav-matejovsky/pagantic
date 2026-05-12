@@ -44,7 +44,7 @@ func main() {
 
 	registry := tool.NewRegistry()
 
-	repl := tui.NewAgentREPL(tui.AgentConfig{
+	repl, err := tui.NewAgentREPL(tui.AgentConfig{
 		Title:        "simple-chat",
 		Banner:       "Type 'chat' to start chatting, 'quit' to exit.",
 		SystemPrompt: "You are a helpful assistant. Be concise.",
@@ -57,6 +57,10 @@ func main() {
 		},
 		Registry: registry,
 	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
 
 	repl.Run(ctx)
 	fmt.Println("Done.")

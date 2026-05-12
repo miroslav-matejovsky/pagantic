@@ -63,13 +63,13 @@ type AgentREPL struct {
 
 // NewAgentREPL creates an AgentREPL from the given config.
 // Defaults LocalDir to ".local" if empty.
-// Panics if EngineLoader or Registry is nil.
-func NewAgentREPL(cfg AgentConfig) *AgentREPL {
+// Returns error if EngineLoader or Registry is nil.
+func NewAgentREPL(cfg AgentConfig) (*AgentREPL, error) {
 	if cfg.EngineLoader == nil {
-		panic("tui: AgentConfig.EngineLoader must not be nil")
+		return nil, fmt.Errorf("tui: AgentConfig.EngineLoader must not be nil")
 	}
 	if cfg.Registry == nil {
-		panic("tui: AgentConfig.Registry must not be nil")
+		return nil, fmt.Errorf("tui: AgentConfig.Registry must not be nil")
 	}
 	if cfg.LocalDir == "" {
 		cfg.LocalDir = ".local"
@@ -100,7 +100,7 @@ func NewAgentREPL(cfg AgentConfig) *AgentREPL {
 		},
 	})
 
-	return t
+	return t, nil
 }
 
 // AddCommand registers an additional command in the REPL.

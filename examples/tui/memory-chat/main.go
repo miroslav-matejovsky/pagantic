@@ -63,7 +63,7 @@ func main() {
 	tracker := memory.NewConversationBuffer(0)
 	registry := tool.NewRegistry()
 
-	repl := tui.NewAgentREPL(tui.AgentConfig{
+	repl, err := tui.NewAgentREPL(tui.AgentConfig{
 		Title:        "memory-chat",
 		Banner:       "Try: remember name Mira, recall name, keys, status, mchat",
 		SystemPrompt: systemPrompt,
@@ -76,6 +76,10 @@ func main() {
 		},
 		Registry: registry,
 	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
 
 	repl.AddCommand(tui.Command{
 		Name:        "remember",

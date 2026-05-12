@@ -48,7 +48,7 @@ func main() {
 
 	registry := tool.NewRegistry(&diceTool{})
 
-	repl := tui.NewAgentREPL(tui.AgentConfig{
+	repl, err := tui.NewAgentREPL(tui.AgentConfig{
 		Title:  "tool-use",
 		Banner: "Chat with an LLM that can roll dice. Try: chat, then ask it to roll 2d6.",
 		SystemPrompt: `You are a dice assistant. When the user asks to roll dice or generate random results,
@@ -62,6 +62,10 @@ call the roll_dice tool. Do not invent dice results yourself.`,
 		},
 		Registry: registry,
 	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
 
 	repl.AddCommand(tui.Command{
 		Name:        "info",

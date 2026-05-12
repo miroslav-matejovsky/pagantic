@@ -68,12 +68,16 @@ func main() {
 	}
 	fmt.Fprintln(os.Stderr)
 
-	runner := cli.NewRunner(cli.RunConfig{
+	runner, err := cli.NewRunner(cli.RunConfig{
 		Engine:       engine,
 		Registry:     registry,
 		SystemPrompt: "You are a helpful assistant with access to tools. Use them when needed.",
 		Out:          os.Stdout,
 	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
 
 	if err := runner.Run(ctx, prompt); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)

@@ -34,55 +34,60 @@ func (s *stubEngine) ModelInfo() inference.ModelInfo {
 	return inference.ModelInfo{Name: "stub"}
 }
 
-func TestNewRunner_PanicsOnNilEngine(t *testing.T) {
-	require.Panics(t, func() {
-		NewRunner(RunConfig{})
-	})
+func TestNewRunner_ErrorOnNilEngine(t *testing.T) {
+	_, err := NewRunner(RunConfig{})
+	require.Error(t, err)
+	require.ErrorContains(t, err, "Engine")
 }
 
 func TestRunner_Run_EmptyPrompt(t *testing.T) {
-	r := NewRunner(RunConfig{Engine: &stubEngine{}})
+	r, err := NewRunner(RunConfig{Engine: &stubEngine{}})
+	require.NoError(t, err)
 
-	err := r.Run(context.Background(), "")
+	err = r.Run(context.Background(), "")
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "empty prompt")
 }
 
 func TestRunner_Run_WhitespacePrompt(t *testing.T) {
-	r := NewRunner(RunConfig{Engine: &stubEngine{}})
+	r, err := NewRunner(RunConfig{Engine: &stubEngine{}})
+	require.NoError(t, err)
 
-	err := r.Run(context.Background(), "   \n  ")
+	err = r.Run(context.Background(), "   \n  ")
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "empty prompt")
 }
 
 func TestRunner_Run_WritesOutput(t *testing.T) {
 	var buf bytes.Buffer
-	r := NewRunner(RunConfig{
+	r, err := NewRunner(RunConfig{
 		Engine: &stubEngine{response: "hello world"},
 		Out:    &buf,
 	})
+	require.NoError(t, err)
 
-	err := r.Run(context.Background(), "say hello")
+	err = r.Run(context.Background(), "say hello")
 	require.NoError(t, err)
 	require.Equal(t, "hello world\n", buf.String())
 }
 
 func TestRunner_Run_NilOutDefaultsToStdout(t *testing.T) {
 	// With nil Out, NewRunner should default to os.Stdout - no panic, no lost output.
-	r := NewRunner(RunConfig{Engine: &stubEngine{response: "ok"}})
+	r, err := NewRunner(RunConfig{Engine: &stubEngine{response: "ok"}})
+	require.NoError(t, err)
 	require.Equal(t, os.Stdout, r.cfg.Out)
 }
 
 func TestRunner_Run_NoOutputWhenStreaming(t *testing.T) {
 	var buf bytes.Buffer
-	r := NewRunner(RunConfig{
+	r, err := NewRunner(RunConfig{
 		Engine: &stubEngine{response: "streamed"},
 		Out:    &buf,
 		Stream: &inference.StreamHandler{},
 	})
+	require.NoError(t, err)
 
-	err := r.Run(context.Background(), "say hello")
+	err = r.Run(context.Background(), "say hello")
 	require.NoError(t, err)
 	require.Empty(t, buf.String(), "should not write to Out when streaming")
 }
@@ -90,9 +95,10 @@ func TestRunner_Run_NoOutputWhenStreaming(t *testing.T) {
 func TestRunner_Run_AlwaysHasDeadline(t *testing.T) {
 	// Engine requires a context with deadline - verify Run always sets one.
 	eng := &stubEngine{response: "ok"}
-	r := NewRunner(RunConfig{Engine: eng})
+	r, err := NewRunner(RunConfig{Engine: eng})
+	require.NoError(t, err)
 
-	err := r.Run(context.Background(), "hello")
+	err = r.Run(context.Background(), "hello")
 	require.NoError(t, err)
 
 	_, hasDeadline := eng.captCtx.Deadline()
@@ -101,10 +107,11 @@ func TestRunner_Run_AlwaysHasDeadline(t *testing.T) {
 
 func TestRunner_Run_DefaultTimeoutApplied(t *testing.T) {
 	eng := &stubEngine{response: "ok"}
-	r := NewRunner(RunConfig{Engine: eng})
+	r, err := NewRunner(RunConfig{Engine: eng})
+	require.NoError(t, err)
 
 	before := time.Now().Add(DefaultTimeout)
-	err := r.Run(context.Background(), "hello")
+	err = r.Run(context.Background(), "hello")
 	require.NoError(t, err)
 
 	deadline, ok := eng.captCtx.Deadline()
@@ -117,10 +124,11 @@ func TestRunner_Run_DefaultTimeoutApplied(t *testing.T) {
 func TestRunner_Run_CustomTimeoutOverridesDefault(t *testing.T) {
 	eng := &stubEngine{response: "ok"}
 	custom := 5 * time.Second
-	r := NewRunner(RunConfig{Engine: eng, Timeout: custom})
+	r, err := NewRunner(RunConfig{Engine: eng, Timeout: custom})
+	require.NoError(t, err)
 
 	before := time.Now().Add(custom)
-	err := r.Run(context.Background(), "hello")
+	err = r.Run(context.Background(), "hello")
 	require.NoError(t, err)
 
 	deadline, ok := eng.captCtx.Deadline()

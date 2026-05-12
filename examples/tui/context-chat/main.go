@@ -52,7 +52,7 @@ func main() {
 	// system, API, or vector store.
 	contextProvider := buildContextProvider()
 
-	repl := tui.NewAgentREPL(tui.AgentConfig{
+	repl, err := tui.NewAgentREPL(tui.AgentConfig{
 		Title:  "context-chat",
 		Banner: "Chat with context retrieval. Type 'ctx-chat' to start, 'quit' to exit.\nAsk about Go programming - the model has domain knowledge loaded.",
 		SystemPrompt: "You are a Go programming assistant. Answer questions using the provided context. " +
@@ -66,6 +66,10 @@ func main() {
 		},
 		Registry: registry,
 	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
 
 	// Register a custom command to show what documents are available.
 	repl.AddCommand(tui.Command{
