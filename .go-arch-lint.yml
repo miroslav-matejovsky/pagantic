@@ -41,7 +41,7 @@ deps:
   L02_orchestrate:
     mayDependOn: [L00_core, L01_inference, L04_tool, L05_constraint, L09_memory, L10_observe]
   L03_context:
-    mayDependOn: [L00_core]
+    mayDependOn: [L00_core, L02_orchestrate]
   L04_tool:
     mayDependOn: [L00_core, L10_observe]
   L05_constraint:

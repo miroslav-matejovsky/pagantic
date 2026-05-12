@@ -25,6 +25,7 @@
 ## Coding Style
 
 - Idiomatic go code is required.
+- Always prefer fail fast and explicit error handling. Avoid default values and implicit assumptions.
 - Each package must have a go.doc comment with comprehensive documentation.
 - Write clear and concise Go docs for all exported functions, types, and packages.
 - Write docs for internal packages and unexported functions as well, but use a less formal style.

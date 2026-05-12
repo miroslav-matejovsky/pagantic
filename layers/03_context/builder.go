@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	core "github.com/miroslav-matejovsky/pagantic/layers/00_core"
+	orchestrate "github.com/miroslav-matejovsky/pagantic/layers/02_orchestrate"
 )
 
 // ContextBuilder assembles retrieved chunks into messages for model.
@@ -14,16 +15,15 @@ type ContextBuilder struct {
 	MaxChunks int // max chunks to include; 0 or negative means use all retrieved
 }
 
+var _ orchestrate.ContextProvider = (*ContextBuilder)(nil) // ensure ContextBuilder implements ContextProvider
+
 // Build retrieves relevant content and assembles it into context messages.
 func (cb *ContextBuilder) Build(ctx context.Context, query string) ([]core.Message, error) {
 	if cb == nil || cb.Retriever == nil {
 		return nil, fmt.Errorf("context: nil retriever")
 	}
 
-	limit := cb.MaxChunks
-	if limit < 0 {
-		limit = 0
-	}
+	limit := max(cb.MaxChunks, 0)
 
 	chunks, err := cb.Retriever.Retrieve(ctx, query, limit)
 	if err != nil {
