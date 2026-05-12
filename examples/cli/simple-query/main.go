@@ -50,11 +50,17 @@ func main() {
 
 	engine := kronk.NewAdapter(krn, nil)
 
-	runner := cli.NewRunner(cli.RunConfig{
-		Engine:       engine,
-		SystemPrompt: "You are a helpful assistant. Be concise.",
-		Out:          os.Stdout,
+	runner, err := cli.NewRunner(cli.RunConfig{
+		Engine:            engine,
+		SystemPrompt:      "You are a helpful assistant. Be concise.",
+		Out:               os.Stdout,
+		MaxTokens:         2048,
+		MaxToolIterations: 20,
 	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
 
 	if err := runner.Run(ctx, prompt); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)

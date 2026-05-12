@@ -44,7 +44,7 @@ func main() {
 
 	registry := tool.NewRegistry()
 
-	repl := tui.NewAgentREPL(tui.AgentConfig{
+	repl, err := tui.NewAgentREPL(tui.AgentConfig{
 		Title:        "simple-chat",
 		Banner:       "Type 'chat' to start chatting, 'quit' to exit.",
 		SystemPrompt: "You are a helpful assistant. Be concise.",
@@ -55,8 +55,14 @@ func main() {
 			}
 			return kronk.NewAdapter(krn, nil), cleanup, nil
 		},
-		Registry: registry,
+		Registry:          registry,
+		MaxTokens:         2048,
+		MaxToolIterations: 20,
 	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
 
 	repl.Run(ctx)
 	fmt.Println("Done.")

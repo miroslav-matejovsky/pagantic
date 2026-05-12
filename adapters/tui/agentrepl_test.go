@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	inference "github.com/miroslav-matejovsky/pagantic/layers/01_inference"
 	tool "github.com/miroslav-matejovsky/pagantic/layers/04_tool"
 	prompt "github.com/miroslav-matejovsky/pagantic/layers/08_prompt"
@@ -38,55 +40,78 @@ func errLoader(err error) func(context.Context) (inference.Engine, func(), error
 	}
 }
 
-func newTestREPL(loader func(context.Context) (inference.Engine, func(), error)) (*AgentREPL, *bytes.Buffer, *bytes.Buffer) {
+func newTestREPL(t *testing.T, loader func(context.Context) (inference.Engine, func(), error)) (*AgentREPL, *bytes.Buffer, *bytes.Buffer) {
+	t.Helper()
 	out := &bytes.Buffer{}
 	errOut := &bytes.Buffer{}
-	t := NewAgentREPL(AgentConfig{
-		Title:        "Test",
-		SystemPrompt: "You are a test agent.",
-		EngineLoader: loader,
-		Registry:     stubRegistry,
+	ar, err := NewAgentREPL(AgentConfig{
+		Title:             "Test",
+		SystemPrompt:      "You are a test agent.",
+		EngineLoader:      loader,
+		Registry:          stubRegistry,
+		MaxTokens:         2048,
+		MaxToolIterations: 20,
 	})
-	t.repl.Out = out
-	t.repl.ErrOut = errOut
-	return t, out, errOut
+	require.NoError(t, err)
+	ar.repl.Out = out
+	ar.repl.ErrOut = errOut
+	return ar, out, errOut
 }
 
-func TestNewAgentREPL_PanicsOnNilEngineLoader(t *testing.T) {
-	defer func() {
-		if r := recover(); r == nil {
-			t.Error("expected panic for nil EngineLoader")
-		}
-	}()
-	NewAgentREPL(AgentConfig{Registry: stubRegistry})
+func TestNewAgentREPL_ErrorOnNilEngineLoader(t *testing.T) {
+	_, err := NewAgentREPL(AgentConfig{Registry: stubRegistry, MaxTokens: 2048, MaxToolIterations: 20})
+	require.Error(t, err)
+	require.ErrorContains(t, err, "EngineLoader")
 }
 
-func TestNewAgentREPL_PanicsOnNilRegistry(t *testing.T) {
-	defer func() {
-		if r := recover(); r == nil {
-			t.Error("expected panic for nil Registry")
-		}
-	}()
-	NewAgentREPL(AgentConfig{
+func TestNewAgentREPL_ErrorOnNilRegistry(t *testing.T) {
+	_, err := NewAgentREPL(AgentConfig{
+		EngineLoader:      stubLoader(nil),
+		MaxTokens:         2048,
+		MaxToolIterations: 20,
+	})
+	require.Error(t, err)
+	require.ErrorContains(t, err, "Registry")
+}
+
+func TestNewAgentREPL_ErrorOnZeroMaxTokens(t *testing.T) {
+	_, err := NewAgentREPL(AgentConfig{
+		EngineLoader:      stubLoader(nil),
+		Registry:          stubRegistry,
+		MaxToolIterations: 20,
+	})
+	require.Error(t, err)
+	require.ErrorContains(t, err, "MaxTokens")
+}
+
+func TestNewAgentREPL_ErrorOnZeroMaxToolIterations(t *testing.T) {
+	_, err := NewAgentREPL(AgentConfig{
 		EngineLoader: stubLoader(nil),
+		Registry:     stubRegistry,
+		MaxTokens:    2048,
 	})
+	require.Error(t, err)
+	require.ErrorContains(t, err, "MaxToolIterations")
 }
 
 func TestAgentREPL_DefaultLocalDir(t *testing.T) {
-	ar, _, _ := newTestREPL(stubLoader(nil))
+	ar, _, _ := newTestREPL(t, stubLoader(nil))
 	if ar.LocalDir() != ".local" {
 		t.Errorf("LocalDir() = %q, want %q", ar.LocalDir(), ".local")
 	}
 }
 
 func TestAgentREPL_CustomLocalDir(t *testing.T) {
-	ar := NewAgentREPL(AgentConfig{
-		Title:        "Test",
-		SystemPrompt: "x",
-		EngineLoader: stubLoader(&fakeEngine{}),
-		Registry:     stubRegistry,
-		LocalDir:     "C:\\work\\mydir",
+	ar, err := NewAgentREPL(AgentConfig{
+		Title:             "Test",
+		SystemPrompt:      "x",
+		EngineLoader:      stubLoader(&fakeEngine{}),
+		Registry:          stubRegistry,
+		LocalDir:          "C:\\work\\mydir",
+		MaxTokens:         2048,
+		MaxToolIterations: 20,
 	})
+	require.NoError(t, err)
 	if ar.LocalDir() != "C:\\work\\mydir" {
 		t.Errorf("LocalDir() = %q, want C:\\work\\mydir", ar.LocalDir())
 	}
@@ -98,7 +123,7 @@ func TestAgentREPL_EngineCalledOnce(t *testing.T) {
 		calls++
 		return nil, nil, nil
 	}
-	ar, _, _ := newTestREPL(loader)
+	ar, _, _ := newTestREPL(t, loader)
 
 	_, _ = ar.Engine(context.Background())
 	_, _ = ar.Engine(context.Background())
@@ -111,7 +136,7 @@ func TestAgentREPL_EngineCalledOnce(t *testing.T) {
 
 func TestAgentREPL_EngineErrorPropagation(t *testing.T) {
 	want := errors.New("engine failed")
-	ar, _, _ := newTestREPL(errLoader(want))
+	ar, _, _ := newTestREPL(t, errLoader(want))
 
 	_, err := ar.Engine(context.Background())
 	if !errors.Is(err, want) {
@@ -129,7 +154,7 @@ func TestAgentREPL_EngineErrorNotCached(t *testing.T) {
 		}
 		return nil, nil, nil
 	}
-	ar, _, _ := newTestREPL(loader)
+	ar, _, _ := newTestREPL(t, loader)
 
 	_, err := ar.Engine(context.Background())
 	if err == nil {
@@ -145,7 +170,7 @@ func TestAgentREPL_EngineErrorNotCached(t *testing.T) {
 }
 
 func TestAgentREPL_CommandsRegistered(t *testing.T) {
-	ar, out, _ := newTestREPL(stubLoader(nil))
+	ar, out, _ := newTestREPL(t, stubLoader(nil))
 	ar.repl.In = strings.NewReader("help\nquit\n")
 
 	ar.Run(context.Background())
@@ -161,7 +186,7 @@ func TestAgentREPL_CommandsRegistered(t *testing.T) {
 
 func TestAgentREPL_AddCommand(t *testing.T) {
 	var called bool
-	ar, _, _ := newTestREPL(stubLoader(nil))
+	ar, _, _ := newTestREPL(t, stubLoader(nil))
 	ar.repl.In = strings.NewReader("ping\nquit\n")
 
 	ar.AddCommand(Command{
@@ -183,7 +208,7 @@ func TestAgentREPL_RunPassesContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // already cancelled
 
-	ar, _, _ := newTestREPL(stubLoader(nil))
+	ar, _, _ := newTestREPL(t, stubLoader(nil))
 	ar.repl.In = strings.NewReader("ping\nquit\n")
 
 	// Should return immediately without dispatching due to cancelled context.
@@ -191,7 +216,7 @@ func TestAgentREPL_RunPassesContext(t *testing.T) {
 }
 
 func TestAgentREPL_LoadingWarningToErrOut(t *testing.T) {
-	ar, _, errOut := newTestREPL(stubLoader(nil))
+	ar, _, errOut := newTestREPL(t, stubLoader(nil))
 
 	_, _ = ar.Engine(context.Background())
 
@@ -207,7 +232,7 @@ func TestInfof_Smoke(t *testing.T) { Infof("test %d", 1) }
 func TestWarnf_Smoke(t *testing.T) { Warnf("test %d", 2) }
 
 func TestBuildSystemPrompt_NoInstructions(t *testing.T) {
-	ar, _, _ := newTestREPL(stubLoader(nil))
+	ar, _, _ := newTestREPL(t, stubLoader(nil))
 	got := ar.buildSystemPrompt()
 	if got != "You are a test agent." {
 		t.Errorf("expected plain system prompt, got %q", got)
@@ -215,15 +240,18 @@ func TestBuildSystemPrompt_NoInstructions(t *testing.T) {
 }
 
 func TestBuildSystemPrompt_WithInstructions(t *testing.T) {
-	ar := NewAgentREPL(AgentConfig{
+	ar, err := NewAgentREPL(AgentConfig{
 		Title:        "Test",
 		SystemPrompt: "Base prompt.",
 		Instructions: []prompt.InstructionSet{
 			{Name: "Safety", Rules: []string{"Do not harm", "Be honest"}},
 		},
-		EngineLoader: stubLoader(nil),
-		Registry:     stubRegistry,
+		EngineLoader:      stubLoader(nil),
+		Registry:          stubRegistry,
+		MaxTokens:         2048,
+		MaxToolIterations: 20,
 	})
+	require.NoError(t, err)
 
 	got := ar.buildSystemPrompt()
 	if !strings.Contains(got, "Base prompt.") {

@@ -12,6 +12,8 @@ excludeFiles:
   - "^.*\/test\/.*$"
 
 vendors:
+  xterm:
+    in: "golang.org/x/term"
   kronk-sdk:
     in: "github.com/ardanlabs/kronk/sdk/**"
 
@@ -33,6 +35,8 @@ components:
   cli: { in: adapters/cli }
 
 deps:
+
+  # Layers
   # L00_core: {}
   L01_inference:
     mayDependOn: [L00_core]
@@ -53,12 +57,17 @@ deps:
     mayDependOn: [L00_core]
   L10_observe:
     mayDependOn: [L00_core]
-  kronk:
-    mayDependOn: [L00_core, L01_inference]
-    canUse: [kronk-sdk]
+
+  # Adapters
   tui:
     mayDependOn: [L00_core, L01_inference, L02_orchestrate, L04_tool, L08_prompt, L10_observe]
   api:
     mayDependOn: [L00_core, L02_orchestrate, L10_observe]
   cli:
     mayDependOn: [L00_core, L01_inference, L02_orchestrate, L04_tool]
+    canUse: [xterm]
+
+  # Inference engine
+  kronk:
+    mayDependOn: [L00_core, L01_inference]
+    canUse: [kronk-sdk]

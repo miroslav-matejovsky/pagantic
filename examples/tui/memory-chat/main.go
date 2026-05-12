@@ -63,7 +63,7 @@ func main() {
 	tracker := memory.NewConversationBuffer(0)
 	registry := tool.NewRegistry()
 
-	repl := tui.NewAgentREPL(tui.AgentConfig{
+	repl, err := tui.NewAgentREPL(tui.AgentConfig{
 		Title:        "memory-chat",
 		Banner:       "Try: remember name Mira, recall name, keys, status, mchat",
 		SystemPrompt: systemPrompt,
@@ -74,8 +74,14 @@ func main() {
 			}
 			return kronk.NewAdapter(krn, nil), cleanup, nil
 		},
-		Registry: registry,
+		Registry:          registry,
+		MaxTokens:         2048,
+		MaxToolIterations: 20,
 	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
 
 	repl.AddCommand(tui.Command{
 		Name:        "remember",
@@ -192,15 +198,20 @@ func main() {
 			tracker = memory.NewConversationBuffer(0)
 			turnNum := 0
 
-			chatAgent := orchestrate.NewAgentLoop(orchestrate.LoopConfig{
-				Engine:       eng,
-				Tools:        registry,
-				SystemPrompt: systemPrompt,
-				Stream:       tui.TerminalRenderer(os.Stdout),
+			chatAgent, err := orchestrate.NewAgentLoop(orchestrate.LoopConfig{
+				Engine:            eng,
+				Tools:             registry,
+				SystemPrompt:      systemPrompt,
+				Stream:            tui.TerminalRenderer(os.Stdout),
+				MaxTokens:         2048,
+				MaxToolIterations: 20,
 				OnToolResult: func(name, output string) {
 					_, _ = fmt.Fprintf(os.Stdout, "\n%s\n%s\n", tui.Green("Tool: "+name), tui.SanitizeOutput(output))
 				},
 			})
+			if err != nil {
+				return err
+			}
 
 			fmt.Println(tui.Cyan("\n=== Memory Chat Mode ==="))
 			fmt.Println("SessionState stays across commands.")

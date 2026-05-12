@@ -112,12 +112,18 @@ func main() {
 	// SpecializedLoop with both grammar and schema.
 	// Grammar prevents invalid tokens during generation.
 	// Schema validates final JSON structure after generation.
-	sa := orchestrate.NewSpecializedLoop(orchestrate.SpecializedConfig{
-		SystemPrompt: "Classify the sentiment of the text. Return JSON with a sentiment field.",
-		Engine:       engine,
-		Schema:       schema,
-		Grammar:      grammar.GrammarString(),
+	sa, err := orchestrate.NewSpecializedLoop(orchestrate.SpecializedConfig{
+		SystemPrompt:      "Classify the sentiment of the text. Return JSON with a sentiment field.",
+		Engine:            engine,
+		Schema:            schema,
+		Grammar:           grammar.GrammarString(),
+		MaxTokens:         2048,
+		MaxToolIterations: 20,
 	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
 
 	callCtx, cancel := context.WithTimeout(ctx, 120*time.Second)
 	defer cancel()

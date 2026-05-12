@@ -95,12 +95,18 @@ func main() {
 		Required: []string{"sentiment", "reason"},
 	}
 
-	sa := orchestrate.NewSpecializedLoop(orchestrate.SpecializedConfig{
-		SystemPrompt: "Classify the sentiment. Return JSON with sentiment and reason fields.",
-		Engine:       engine,
-		Schema:       schema,
-		Grammar:      grammarStr,
+	sa, err := orchestrate.NewSpecializedLoop(orchestrate.SpecializedConfig{
+		SystemPrompt:      "Classify the sentiment. Return JSON with sentiment and reason fields.",
+		Engine:            engine,
+		Schema:            schema,
+		Grammar:           grammarStr,
+		MaxTokens:         2048,
+		MaxToolIterations: 20,
 	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Inference error: %v\n", err)
+		os.Exit(1)
+	}
 
 	callCtx, cancel := context.WithTimeout(ctx, 120*time.Second)
 	defer cancel()

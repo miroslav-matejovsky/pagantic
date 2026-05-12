@@ -19,6 +19,8 @@ type Adapter struct {
 	handler *inference.StreamHandler
 }
 
+var _ inference.Engine = (*Adapter)(nil) // ensure Adapter implements inference.Engine
+
 // llmChat is interface kronk engine satisfies.
 type llmChat interface {
 	ChatStreaming(ctx context.Context, d model.D) (<-chan model.ChatResponse, error)

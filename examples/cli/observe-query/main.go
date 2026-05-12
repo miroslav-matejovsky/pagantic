@@ -108,11 +108,17 @@ func main() {
 	inferStart := time.Now()
 
 	// EventLog wired through LoopConfig.Observer.
-	agent := orchestrate.NewAgentLoop(orchestrate.LoopConfig{
-		SystemPrompt: "You are a helpful assistant. Be concise.",
-		Engine:       engine,
-		Observer:     eventLog,
+	agent, err := orchestrate.NewAgentLoop(orchestrate.LoopConfig{
+		SystemPrompt:      "You are a helpful assistant. Be concise.",
+		Engine:            engine,
+		Observer:          eventLog,
+		MaxTokens:         2048,
+		MaxToolIterations: 20,
 	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to build agent: %v\n", err)
+		os.Exit(1)
+	}
 
 	callCtx, cancel := context.WithTimeout(ctx, 120*time.Second)
 	defer cancel()

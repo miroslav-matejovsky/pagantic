@@ -1,84 +1,94 @@
-// CLI example: direct tool execution with observability.
+// CLI example: agent loop with tools and streaming.
 //
-// Demonstrates layer 4 (tool) and layer 10 (observe) without LLM inference:
+// Demonstrates model-driven tool use through layers 2, 4, and the cli adapter:
 //
-//   - Layer 4 (tool): ToolExecutor wraps Registry with event recording.
-//     Execute() dispatches tool calls and records start/end events.
-//     Registry.AllDefinitions() returns schemas for all registered tools
-//     (vs Definitions() which returns only available ones).
+//   - Layer 4 (tool): Registry wraps calcTool and greetTool. Definitions()
+//     returns schemas the model receives. Execute dispatches calls the model
+//     makes.
 //
-//   - Layer 10 (observe): InMemoryEventLog stores events in memory.
-//     ToolExecutor records events through the EventLog interface.
-//     After execution, Events() returns all recorded events for inspection.
+//   - Layer 2 (orchestrate): AgentLoop runs the inference-tool loop. The
+//     model decides when to call tools; AgentLoop dispatches them and feeds
+//     results back until the model produces a final text answer.
 //
-//   - No LLM needed: this example demonstrates the deterministic tool layer
-//     in isolation. In production, AgentLoop calls Registry.Execute directly.
-//     ToolExecutor adds observability on top.
+//   - CLI adapter: Runner wires model + registry. When Stream is nil,
+//     Runner creates a default handler that prints model info to stderr and
+//     streams response tokens to stdout as they arrive.
 //
-// When to use ToolExecutor vs Registry.Execute:
-//   - ToolExecutor: when you need event recording, audit trail, or debugging
-//   - Registry.Execute: when you just need tool dispatch (AgentLoop path)
+// Contrast with plain Registry.Execute (no model):
 //
-// Key pagantic concept: tools are fully deterministic. Same input always
-// produces same output. The executor adds observability without changing
-// behavior.
+//   - Registry.Execute: deterministic dispatch, caller supplies the tool call.
+//   - AgentLoop + Registry: the model decides which tools to call and when,
+//     based on the user prompt.
+//
+// Key pagantic concept: tools are fully deterministic. The model layer is
+// probabilistic only in deciding which tools to invoke; execution is always
+// deterministic. Same tool arguments always produce the same result.
 package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
+	"os/signal"
 
+	"github.com/miroslav-matejovsky/pagantic/adapters/cli"
+	"github.com/miroslav-matejovsky/pagantic/kronk"
 	core "github.com/miroslav-matejovsky/pagantic/layers/00_core"
 	tool "github.com/miroslav-matejovsky/pagantic/layers/04_tool"
-	observe "github.com/miroslav-matejovsky/pagantic/layers/10_observe"
 )
 
+const llmModel = "unsloth/gemma-4-E4B-it"
+
+// defaultQuery is used when no arguments are passed. It exercises both tools.
+const defaultQuery = "What is 15 plus 27? Also greet Alice."
+
 func main() {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
+
+	prompt, err := cli.ReadPrompt(os.Args[1:], os.Stdin)
+	if err != nil {
+		if !errors.Is(err, cli.ErrNoPrompt) {
+			fmt.Fprintf(os.Stderr, "Error reading prompt: %v\n", err)
+			os.Exit(1)
+		}
+		prompt = defaultQuery
+	}
+
+	krn, cleanup, err := kronk.Load(ctx, kronk.Config{ModelSource: llmModel})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to load engine: %v\n", err)
+		os.Exit(1)
+	}
+	defer cleanup()
+
+	engine := kronk.NewAdapter(krn, nil)
+
 	registry := tool.NewRegistry(&calcTool{}, &greetTool{})
 
-	// AllDefinitions returns schemas for ALL tools (including unavailable).
-	allDefs := registry.AllDefinitions()
-	fmt.Fprintf(os.Stderr, "Registered tools (%d):\n", len(allDefs))
-	for _, def := range allDefs {
+	fmt.Fprintf(os.Stderr, "Registered tools (%d):\n", len(registry.AllDefinitions()))
+	for _, def := range registry.AllDefinitions() {
 		fmt.Fprintf(os.Stderr, "  - %s: %s\n", def.Name, def.Description)
 	}
 	fmt.Fprintln(os.Stderr)
 
-	// ToolExecutor wraps registry with event recording.
-	eventLog := &observe.InMemoryEventLog{}
-	executor := &tool.ToolExecutor{
-		Registry: registry,
-		Observer: eventLog,
+	runner, err := cli.NewRunner(cli.RunConfig{
+		Engine:            engine,
+		Registry:          registry,
+		SystemPrompt:      "You are a helpful assistant with access to tools. Use them when needed.",
+		Out:               os.Stdout,
+		MaxTokens:         2048,
+		MaxToolIterations: 20,
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
 	}
 
-	// Execute tool calls and collect results.
-	calls := []core.ToolCall{
-		{ID: "call-1", Name: "calculate", Arguments: map[string]any{"operation": "add", "a": float64(15), "b": float64(27)}},
-		{ID: "call-2", Name: "greet", Arguments: map[string]any{"name": "World"}},
-		{ID: "call-3", Name: "calculate", Arguments: map[string]any{"operation": "multiply", "a": float64(6), "b": float64(7)}},
-		{ID: "call-4", Name: "unknown_tool", Arguments: map[string]any{}},
-	}
-
-	for _, call := range calls {
-		result := executor.Execute(context.Background(), call)
-		if result.IsError {
-			fmt.Fprintf(os.Stderr, "[ERROR] %s: %s\n", call.Name, result.Content)
-		} else {
-			fmt.Printf("%s(%v) = %s\n", call.Name, call.Arguments, result.Content)
-		}
-	}
-
-	// Print recorded events from observer.
-	events := eventLog.Events()
-	fmt.Fprintf(os.Stderr, "\nRecorded events (%d):\n", len(events))
-	for _, ev := range events {
-		errStr := ""
-		if ev.Error != nil {
-			errStr = fmt.Sprintf(" error=%v", ev.Error)
-		}
-		fmt.Fprintf(os.Stderr, "  [%s] %s.%s duration=%v%s\n",
-			ev.Data["call_id"], ev.Layer, ev.Action, ev.Duration, errStr)
+	if err := runner.Run(ctx, prompt); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
 	}
 }
 
@@ -184,3 +194,4 @@ func (g *greetTool) Available() (bool, string) { return true, "" }
 // Usage:
 //
 //	go run examples/cli/tool-query/main.go
+//	go run examples/cli/tool-query/main.go "What is 100 divided by 4? Greet Bob too."

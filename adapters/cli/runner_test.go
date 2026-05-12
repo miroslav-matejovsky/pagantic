@@ -16,10 +16,17 @@ import (
 type stubEngine struct {
 	response string
 	captCtx  context.Context
+	handler  *inference.StreamHandler
+}
+
+func (s *stubEngine) WithStreamHandler(h *inference.StreamHandler) inference.Engine {
+	s.handler = h
+	return s
 }
 
 func (s *stubEngine) Infer(ctx context.Context, _ inference.Request) (*inference.Result, error) {
 	s.captCtx = ctx
+	s.handler.EmitContent(s.response)
 	return &inference.Result{Content: s.response}, nil
 }
 
@@ -27,14 +34,33 @@ func (s *stubEngine) ModelInfo() inference.ModelInfo {
 	return inference.ModelInfo{Name: "stub"}
 }
 
-func TestNewRunner_PanicsOnNilEngine(t *testing.T) {
-	require.Panics(t, func() {
-		NewRunner(RunConfig{})
-	})
+func TestNewRunner_ErrorOnNilEngine(t *testing.T) {
+	_, err := NewRunner(RunConfig{MaxTokens: 2048, MaxToolIterations: 20})
+	require.Error(t, err)
+	require.ErrorContains(t, err, "Engine")
+}
+
+func TestNewRunner_ErrorOnZeroMaxTokens(t *testing.T) {
+	_, err := NewRunner(RunConfig{Engine: &stubEngine{}, MaxToolIterations: 20})
+	require.Error(t, err)
+	require.ErrorContains(t, err, "MaxTokens")
+}
+
+func TestNewRunner_ErrorOnZeroMaxToolIterations(t *testing.T) {
+	_, err := NewRunner(RunConfig{Engine: &stubEngine{}, MaxTokens: 2048})
+	require.Error(t, err)
+	require.ErrorContains(t, err, "MaxToolIterations")
+}
+
+func newTestRunner(t *testing.T, cfg RunConfig) *Runner {
+	t.Helper()
+	r, err := NewRunner(cfg)
+	require.NoError(t, err)
+	return r
 }
 
 func TestRunner_Run_EmptyPrompt(t *testing.T) {
-	r := NewRunner(RunConfig{Engine: &stubEngine{}})
+	r := newTestRunner(t, RunConfig{Engine: &stubEngine{}, MaxTokens: 2048, MaxToolIterations: 20})
 
 	err := r.Run(context.Background(), "")
 	require.Error(t, err)
@@ -42,7 +68,7 @@ func TestRunner_Run_EmptyPrompt(t *testing.T) {
 }
 
 func TestRunner_Run_WhitespacePrompt(t *testing.T) {
-	r := NewRunner(RunConfig{Engine: &stubEngine{}})
+	r := newTestRunner(t, RunConfig{Engine: &stubEngine{}, MaxTokens: 2048, MaxToolIterations: 20})
 
 	err := r.Run(context.Background(), "   \n  ")
 	require.Error(t, err)
@@ -51,9 +77,11 @@ func TestRunner_Run_WhitespacePrompt(t *testing.T) {
 
 func TestRunner_Run_WritesOutput(t *testing.T) {
 	var buf bytes.Buffer
-	r := NewRunner(RunConfig{
-		Engine: &stubEngine{response: "hello world"},
-		Out:    &buf,
+	r := newTestRunner(t, RunConfig{
+		Engine:            &stubEngine{response: "hello world"},
+		Out:               &buf,
+		MaxTokens:         2048,
+		MaxToolIterations: 20,
 	})
 
 	err := r.Run(context.Background(), "say hello")
@@ -63,16 +91,18 @@ func TestRunner_Run_WritesOutput(t *testing.T) {
 
 func TestRunner_Run_NilOutDefaultsToStdout(t *testing.T) {
 	// With nil Out, NewRunner should default to os.Stdout - no panic, no lost output.
-	r := NewRunner(RunConfig{Engine: &stubEngine{response: "ok"}})
+	r := newTestRunner(t, RunConfig{Engine: &stubEngine{response: "ok"}, MaxTokens: 2048, MaxToolIterations: 20})
 	require.Equal(t, os.Stdout, r.cfg.Out)
 }
 
 func TestRunner_Run_NoOutputWhenStreaming(t *testing.T) {
 	var buf bytes.Buffer
-	r := NewRunner(RunConfig{
-		Engine: &stubEngine{response: "streamed"},
-		Out:    &buf,
-		Stream: &inference.StreamHandler{},
+	r := newTestRunner(t, RunConfig{
+		Engine:            &stubEngine{response: "streamed"},
+		Out:               &buf,
+		Stream:            &inference.StreamHandler{},
+		MaxTokens:         2048,
+		MaxToolIterations: 20,
 	})
 
 	err := r.Run(context.Background(), "say hello")
@@ -83,7 +113,7 @@ func TestRunner_Run_NoOutputWhenStreaming(t *testing.T) {
 func TestRunner_Run_AlwaysHasDeadline(t *testing.T) {
 	// Engine requires a context with deadline - verify Run always sets one.
 	eng := &stubEngine{response: "ok"}
-	r := NewRunner(RunConfig{Engine: eng})
+	r := newTestRunner(t, RunConfig{Engine: eng, MaxTokens: 2048, MaxToolIterations: 20})
 
 	err := r.Run(context.Background(), "hello")
 	require.NoError(t, err)
@@ -94,7 +124,7 @@ func TestRunner_Run_AlwaysHasDeadline(t *testing.T) {
 
 func TestRunner_Run_DefaultTimeoutApplied(t *testing.T) {
 	eng := &stubEngine{response: "ok"}
-	r := NewRunner(RunConfig{Engine: eng})
+	r := newTestRunner(t, RunConfig{Engine: eng, MaxTokens: 2048, MaxToolIterations: 20})
 
 	before := time.Now().Add(DefaultTimeout)
 	err := r.Run(context.Background(), "hello")
@@ -110,7 +140,7 @@ func TestRunner_Run_DefaultTimeoutApplied(t *testing.T) {
 func TestRunner_Run_CustomTimeoutOverridesDefault(t *testing.T) {
 	eng := &stubEngine{response: "ok"}
 	custom := 5 * time.Second
-	r := NewRunner(RunConfig{Engine: eng, Timeout: custom})
+	r := newTestRunner(t, RunConfig{Engine: eng, Timeout: custom, MaxTokens: 2048, MaxToolIterations: 20})
 
 	before := time.Now().Add(custom)
 	err := r.Run(context.Background(), "hello")
@@ -141,5 +171,44 @@ func TestReadPrompt_EmptyStdin(t *testing.T) {
 
 	_, err := ReadPrompt(nil, stdin)
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "no prompt provided")
+	require.ErrorIs(t, err, ErrNoPrompt)
+}
+
+func TestReadPrompt_NoPromptSentinel(t *testing.T) {
+	// Both empty-stdin and TTY paths must wrap ErrNoPrompt so callers can
+	// distinguish "nothing provided" from real I/O failures.
+	_, err := ReadPrompt(nil, strings.NewReader(""))
+	require.ErrorIs(t, err, ErrNoPrompt, "empty stdin must wrap ErrNoPrompt")
+}
+
+func TestReadPrompt_PipedStdin_DoesNotBlock(t *testing.T) {
+	// os.Pipe returns an *os.File that is NOT a terminal (term.IsTerminal == false).
+	// ReadPrompt must read it normally rather than returning the TTY error.
+	r, w, err := os.Pipe()
+	require.NoError(t, err)
+	defer func() { _ = r.Close() }()
+
+	_, _ = w.WriteString("piped content")
+	_ = w.Close()
+
+	prompt, err := ReadPrompt(nil, r)
+	require.NoError(t, err)
+	require.Equal(t, "piped content", prompt)
+}
+
+func TestReadPrompt_NonFileReader_ReadsNormally(t *testing.T) {
+	// os.Stdin in test processes is NOT a terminal (tests run with piped I/O),
+	// so we use /dev/null or NUL as a stand-in non-terminal *os.File to verify
+	// non-terminal files still read normally, and rely on the Pipe test above
+	// to confirm the TTY guard path is correctly skipped for pipes.
+	//
+	// True TTY detection can only be verified in a manual integration test
+	// because test runners always redirect stdin away from the terminal.
+	//
+	// Here we just assert the contract: a strings.Reader (not *os.File) reads
+	// normally and is never treated as a terminal.
+	stdin := strings.NewReader("from reader")
+	prompt, err := ReadPrompt(nil, stdin)
+	require.NoError(t, err)
+	require.Equal(t, "from reader", prompt)
 }
