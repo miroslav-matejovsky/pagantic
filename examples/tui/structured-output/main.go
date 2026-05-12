@@ -70,12 +70,18 @@ func main() {
 		Required: []string{"sentiment", "confidence", "explanation"},
 	}
 
-	sa := orchestrate.NewSpecializedLoop(orchestrate.SpecializedConfig{
-		SystemPrompt: "Analyze the sentiment of the given text. Return structured JSON with sentiment, confidence (0-1), and a brief explanation.",
-		Engine:       engine,
-		Schema:       schema,
-		Stream:       tui.TerminalRenderer(os.Stdout),
+	sa, err := orchestrate.NewSpecializedLoop(orchestrate.SpecializedConfig{
+		SystemPrompt:      "Analyze the sentiment of the given text. Return structured JSON with sentiment, confidence (0-1), and a brief explanation.",
+		Engine:            engine,
+		Schema:            schema,
+		Stream:            tui.TerminalRenderer(os.Stdout),
+		MaxTokens:         2048,
+		MaxToolIterations: 20,
 	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
 
 	sentence := "The weather is absolutely beautiful today, I love it!"
 	fmt.Printf("Analyzing: %q\n\n", sentence)

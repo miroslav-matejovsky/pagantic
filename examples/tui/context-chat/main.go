@@ -93,12 +93,17 @@ func main() {
 				return err
 			}
 
-			loop := orchestrate.NewAgentLoop(orchestrate.LoopConfig{
-				Engine:          eng,
-				SystemPrompt:    "You are a Go programming assistant. Use provided context to answer accurately.",
-				ContextProvider: contextProvider,
-				Stream:          tui.TerminalRenderer(os.Stdout),
+			loop, err := orchestrate.NewAgentLoop(orchestrate.LoopConfig{
+				Engine:            eng,
+				SystemPrompt:      "You are a Go programming assistant. Use provided context to answer accurately.",
+				ContextProvider:   contextProvider,
+				Stream:            tui.TerminalRenderer(os.Stdout),
+				MaxTokens:         2048,
+				MaxToolIterations: 20,
 			})
+			if err != nil {
+				return err
+			}
 
 			fmt.Println(tui.Cyan("\n=== Context Chat Mode ==="))
 			fmt.Println("Context retrieval active. Ask about Go topics.")

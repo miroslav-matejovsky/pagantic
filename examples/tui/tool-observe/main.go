@@ -148,15 +148,20 @@ func main() {
 			_, _ = fmt.Fprintln(repl.Out, "Type 'exit' to return.")
 			_, _ = fmt.Fprintln(repl.Out)
 
-			chatAgent := orchestrate.NewAgentLoop(orchestrate.LoopConfig{
-				SystemPrompt: "You are a helpful assistant with access to calculate and greet tools. Use them when needed.",
-				Engine:       engine,
-				Tools:        registry,
-				Stream:       tui.TerminalRenderer(repl.Out),
+			chatAgent, err := orchestrate.NewAgentLoop(orchestrate.LoopConfig{
+				SystemPrompt:      "You are a helpful assistant with access to calculate and greet tools. Use them when needed.",
+				Engine:            engine,
+				Tools:             registry,
+				Stream:            tui.TerminalRenderer(repl.Out),
+				MaxTokens:         2048,
+				MaxToolIterations: 20,
 				OnToolResult: func(name, output string) {
 					_, _ = fmt.Fprintf(repl.Out, "\n%s\n%s\n", tui.Green("Tool: "+name), tui.SanitizeOutput(output))
 				},
 			})
+			if err != nil {
+				return err
+			}
 
 			scanner := bufio.NewScanner(repl.In)
 			for {

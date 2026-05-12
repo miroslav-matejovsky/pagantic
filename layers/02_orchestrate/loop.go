@@ -14,9 +14,6 @@ import (
 	observe "github.com/miroslav-matejovsky/pagantic/layers/10_observe"
 )
 
-const defaultMaxTokens = 2048
-const defaultMaxToolIterations = 20
-
 // ContextProvider retrieves context messages for a query.
 // The pagantic layers/03_context.ContextBuilder (typically imported with alias
 // pctx) satisfies this interface via Go structural typing - no explicit
@@ -27,12 +24,12 @@ type ContextProvider interface {
 
 // LoopConfig configures agent loop.
 type LoopConfig struct {
-	Engine            inference.Engine
+	Engine            inference.Engine // required
 	Tools             *tool.Registry
 	SystemPrompt      string
 	Grammar           string // GBNF grammar for decoder-level constraint; only applied in ChatStructured, not Chat
-	MaxTokens         int
-	MaxToolIterations int // max tool-call loop rounds, 0 uses default (20)
+	MaxTokens         int    // required; must be > 0
+	MaxToolIterations int    // required; must be > 0
 	Stream            *inference.StreamHandler
 	OnToolResult      func(name, output string)
 	Observer          observe.EventLog
@@ -45,13 +42,17 @@ type AgentLoop struct {
 	memory *memory.ConversationBuffer
 }
 
-// NewAgentLoop builds AgentLoop.
-func NewAgentLoop(cfg LoopConfig) *AgentLoop {
-	if cfg.MaxTokens == 0 {
-		cfg.MaxTokens = defaultMaxTokens
+// NewAgentLoop builds AgentLoop. Returns error if Engine is nil, MaxTokens <= 0,
+// or MaxToolIterations <= 0.
+func NewAgentLoop(cfg LoopConfig) (*AgentLoop, error) {
+	if cfg.Engine == nil {
+		return nil, fmt.Errorf("agent loop: Engine required")
 	}
-	if cfg.MaxToolIterations == 0 {
-		cfg.MaxToolIterations = defaultMaxToolIterations
+	if cfg.MaxTokens <= 0 {
+		return nil, fmt.Errorf("agent loop: MaxTokens must be > 0")
+	}
+	if cfg.MaxToolIterations <= 0 {
+		return nil, fmt.Errorf("agent loop: MaxToolIterations must be > 0")
 	}
 
 	buf := memory.NewConversationBuffer(0)
@@ -59,7 +60,7 @@ func NewAgentLoop(cfg LoopConfig) *AgentLoop {
 		buf.Append(core.NewSystemMessage(cfg.SystemPrompt))
 	}
 
-	return &AgentLoop{cfg: cfg, memory: buf}
+	return &AgentLoop{cfg: cfg, memory: buf}, nil
 }
 
 // Chat sends user message, resolves tool calls, and returns final answer.

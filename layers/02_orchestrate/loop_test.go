@@ -99,10 +99,13 @@ func TestAgentLoop_Chat_NoTools(t *testing.T) {
 	eng := &fakeEngine{
 		responses: []inference.Result{{Content: "hello there"}},
 	}
-	loop := NewAgentLoop(LoopConfig{
-		SystemPrompt: "sys",
-		Engine:       eng,
+	loop, err := NewAgentLoop(LoopConfig{
+		SystemPrompt:      "sys",
+		Engine:            eng,
+		MaxTokens:         2048,
+		MaxToolIterations: 20,
 	})
+	require.NoError(t, err)
 
 	result, err := loop.Chat(context.Background(), "hi")
 	require.NoError(t, err)
@@ -124,16 +127,19 @@ func TestAgentLoop_Chat_WithTools(t *testing.T) {
 		result:     "result of do_thing",
 	}
 	callbackFired := false
-	loop := NewAgentLoop(LoopConfig{
-		SystemPrompt: "sys",
-		Engine:       eng,
-		Tools:        tool.NewRegistry(toolDef),
+	loop, err := NewAgentLoop(LoopConfig{
+		SystemPrompt:      "sys",
+		Engine:            eng,
+		Tools:             tool.NewRegistry(toolDef),
+		MaxTokens:         2048,
+		MaxToolIterations: 20,
 		OnToolResult: func(name, output string) {
 			callbackFired = true
 			require.Equal(t, "do_thing", name)
 			require.Equal(t, "result of do_thing", output)
 		},
 	})
+	require.NoError(t, err)
 
 	result, err := loop.Chat(context.Background(), "go")
 	require.NoError(t, err)
@@ -159,11 +165,14 @@ func TestAgentLoop_Chat_ToolError(t *testing.T) {
 		definition: core.ToolDefinition{Name: "bad_tool"},
 		err:        errors.New("boom"),
 	}
-	loop := NewAgentLoop(LoopConfig{
-		SystemPrompt: "sys",
-		Engine:       eng,
-		Tools:        tool.NewRegistry(toolDef),
+	loop, err := NewAgentLoop(LoopConfig{
+		SystemPrompt:      "sys",
+		Engine:            eng,
+		Tools:             tool.NewRegistry(toolDef),
+		MaxTokens:         2048,
+		MaxToolIterations: 20,
 	})
+	require.NoError(t, err)
 
 	result, err := loop.Chat(context.Background(), "go")
 	require.NoError(t, err)
@@ -180,10 +189,13 @@ func TestAgentLoop_ChatStructured(t *testing.T) {
 	eng := &fakeEngine{
 		responses: []inference.Result{{Content: `{"key":"val"}`}},
 	}
-	loop := NewAgentLoop(LoopConfig{
-		SystemPrompt: "sys",
-		Engine:       eng,
+	loop, err := NewAgentLoop(LoopConfig{
+		SystemPrompt:      "sys",
+		Engine:            eng,
+		MaxTokens:         2048,
+		MaxToolIterations: 20,
 	})
+	require.NoError(t, err)
 
 	schema := core.Schema{
 		Type: "object",
@@ -209,12 +221,15 @@ func TestAgentLoop_ChatStructured_UsesAccumulatedHistory(t *testing.T) {
 			{Content: `{"key":"val"}`},
 		},
 	}
-	loop := NewAgentLoop(LoopConfig{
-		SystemPrompt: "sys",
-		Engine:       eng,
+	loop, err := NewAgentLoop(LoopConfig{
+		SystemPrompt:      "sys",
+		Engine:            eng,
+		MaxTokens:         2048,
+		MaxToolIterations: 20,
 	})
+	require.NoError(t, err)
 
-	_, err := loop.Chat(context.Background(), "collect data")
+	_, err = loop.Chat(context.Background(), "collect data")
 	require.NoError(t, err)
 
 	result, err := loop.ChatStructured(context.Background(), "now produce json", core.Schema{Type: "object"})
@@ -225,18 +240,37 @@ func TestAgentLoop_ChatStructured_UsesAccumulatedHistory(t *testing.T) {
 	require.NotNil(t, eng.calls[1].Schema)
 }
 
-func TestAgentLoop_MaxTokens_Default(t *testing.T) {
+func TestAgentLoop_New_Validation(t *testing.T) {
+	eng := &fakeEngine{}
+
+	_, err := NewAgentLoop(LoopConfig{MaxTokens: 2048, MaxToolIterations: 20})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "Engine")
+
+	_, err = NewAgentLoop(LoopConfig{Engine: eng, MaxToolIterations: 20})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "MaxTokens")
+
+	_, err = NewAgentLoop(LoopConfig{Engine: eng, MaxTokens: 2048})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "MaxToolIterations")
+}
+
+func TestAgentLoop_Chat_MaxTokens_PassedToEngine(t *testing.T) {
 	eng := &fakeEngine{
 		responses: []inference.Result{{Content: "hi"}},
 	}
-	loop := NewAgentLoop(LoopConfig{
-		SystemPrompt: "sys",
-		Engine:       eng,
+	loop, err := NewAgentLoop(LoopConfig{
+		SystemPrompt:      "sys",
+		Engine:            eng,
+		MaxTokens:         4096,
+		MaxToolIterations: 20,
 	})
-
-	_, err := loop.Chat(context.Background(), "hey")
 	require.NoError(t, err)
-	require.Equal(t, 2048, eng.calls[0].MaxTokens)
+
+	_, err = loop.Chat(context.Background(), "hey")
+	require.NoError(t, err)
+	require.Equal(t, 4096, eng.calls[0].MaxTokens)
 }
 
 func TestAgentLoop_Chat_MaxToolIterations(t *testing.T) {
@@ -252,13 +286,15 @@ func TestAgentLoop_Chat_MaxToolIterations(t *testing.T) {
 		definition: core.ToolDefinition{Name: "loop_tool"},
 		result:     "looping",
 	}
-	loop := NewAgentLoop(LoopConfig{
+	loop, err := NewAgentLoop(LoopConfig{
 		Engine:            eng,
 		Tools:             tool.NewRegistry(toolDef),
+		MaxTokens:         2048,
 		MaxToolIterations: 3,
 	})
+	require.NoError(t, err)
 
-	_, err := loop.Chat(context.Background(), "go")
+	_, err = loop.Chat(context.Background(), "go")
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "exceeded max tool iterations")
 }
@@ -267,7 +303,8 @@ func TestAgentLoop_ChatStructured_SchemaValidation(t *testing.T) {
 	eng := &fakeEngine{
 		responses: []inference.Result{{Content: `{"name":"grog"}`}},
 	}
-	loop := NewAgentLoop(LoopConfig{Engine: eng})
+	loop, err := NewAgentLoop(LoopConfig{Engine: eng, MaxTokens: 2048, MaxToolIterations: 20})
+	require.NoError(t, err)
 
 	schema := core.Schema{
 		Type: "object",
@@ -277,7 +314,7 @@ func TestAgentLoop_ChatStructured_SchemaValidation(t *testing.T) {
 		},
 		Required: []string{"name", "age"},
 	}
-	_, err := loop.ChatStructured(context.Background(), "produce json", schema)
+	_, err = loop.ChatStructured(context.Background(), "produce json", schema)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "schema validation failed")
 }
@@ -335,11 +372,14 @@ func TestAgentLoop_Chat_WithContext(t *testing.T) {
 	provider := &fakeContextProvider{
 		messages: []core.Message{core.NewSystemMessage("Relevant context:\n\n[1] (doc): bounded knowledge")},
 	}
-	loop := NewAgentLoop(LoopConfig{
-		SystemPrompt:    "sys",
-		Engine:          eng,
-		ContextProvider: provider,
+	loop, err := NewAgentLoop(LoopConfig{
+		SystemPrompt:      "sys",
+		Engine:            eng,
+		ContextProvider:   provider,
+		MaxTokens:         2048,
+		MaxToolIterations: 20,
 	})
+	require.NoError(t, err)
 
 	result, err := loop.Chat(context.Background(), "what is X?")
 	require.NoError(t, err)
@@ -360,10 +400,13 @@ func TestAgentLoop_Chat_NilContextProvider(t *testing.T) {
 	eng := &fakeEngine{
 		responses: []inference.Result{{Content: "no context"}},
 	}
-	loop := NewAgentLoop(LoopConfig{
-		SystemPrompt: "sys",
-		Engine:       eng,
+	loop, err := NewAgentLoop(LoopConfig{
+		SystemPrompt:      "sys",
+		Engine:            eng,
+		MaxTokens:         2048,
+		MaxToolIterations: 20,
 	})
+	require.NoError(t, err)
 
 	result, err := loop.Chat(context.Background(), "hi")
 	require.NoError(t, err)
@@ -383,11 +426,14 @@ func TestAgentLoop_Chat_ContextErrorContinuesWithout(t *testing.T) {
 	provider := &fakeContextProvider{
 		err: errors.New("retrieval failed"),
 	}
-	loop := NewAgentLoop(LoopConfig{
-		SystemPrompt:    "sys",
-		Engine:          eng,
-		ContextProvider: provider,
+	loop, err := NewAgentLoop(LoopConfig{
+		SystemPrompt:      "sys",
+		Engine:            eng,
+		ContextProvider:   provider,
+		MaxTokens:         2048,
+		MaxToolIterations: 20,
 	})
+	require.NoError(t, err)
 
 	result, err := loop.Chat(context.Background(), "hi")
 	require.NoError(t, err)
@@ -408,13 +454,16 @@ func TestAgentLoop_Chat_ContextRetrievedEveryTurn(t *testing.T) {
 	provider := &fakeContextProvider{
 		messages: []core.Message{core.NewSystemMessage("ctx")},
 	}
-	loop := NewAgentLoop(LoopConfig{
-		SystemPrompt:    "sys",
-		Engine:          eng,
-		ContextProvider: provider,
+	loop, err := NewAgentLoop(LoopConfig{
+		SystemPrompt:      "sys",
+		Engine:            eng,
+		ContextProvider:   provider,
+		MaxTokens:         2048,
+		MaxToolIterations: 20,
 	})
+	require.NoError(t, err)
 
-	_, err := loop.Chat(context.Background(), "q1")
+	_, err = loop.Chat(context.Background(), "q1")
 	require.NoError(t, err)
 	_, err = loop.Chat(context.Background(), "q2")
 	require.NoError(t, err)

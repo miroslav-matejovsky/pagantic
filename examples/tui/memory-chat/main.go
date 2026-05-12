@@ -192,15 +192,20 @@ func main() {
 			tracker = memory.NewConversationBuffer(0)
 			turnNum := 0
 
-			chatAgent := orchestrate.NewAgentLoop(orchestrate.LoopConfig{
-				Engine:       eng,
-				Tools:        registry,
-				SystemPrompt: systemPrompt,
-				Stream:       tui.TerminalRenderer(os.Stdout),
+			chatAgent, err := orchestrate.NewAgentLoop(orchestrate.LoopConfig{
+				Engine:            eng,
+				Tools:             registry,
+				SystemPrompt:      systemPrompt,
+				Stream:            tui.TerminalRenderer(os.Stdout),
+				MaxTokens:         2048,
+				MaxToolIterations: 20,
 				OnToolResult: func(name, output string) {
 					_, _ = fmt.Fprintf(os.Stdout, "\n%s\n%s\n", tui.Green("Tool: "+name), tui.SanitizeOutput(output))
 				},
 			})
+			if err != nil {
+				return err
+			}
 
 			fmt.Println(tui.Cyan("\n=== Memory Chat Mode ==="))
 			fmt.Println("SessionState stays across commands.")

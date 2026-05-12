@@ -86,16 +86,19 @@ func main() {
 
 	const redundantN = 3
 
-	// UnanimityVoting: all redundantN candidates must produce identical output.
-	// Grammar makes this achievable by constraining token generation.
-	rl := orchestrate.NewRedundantLoop(orchestrate.RedundantConfig{
+	rl, err := orchestrate.NewRedundantLoop(orchestrate.RedundantConfig{
 		Engine:       engine,
 		SystemPrompt: "Classify the sentiment of the text. Return JSON with a sentiment field.",
 		Schema:       schema,
 		Grammar:      sentimentGrammar,
 		N:            redundantN,
 		Voting:       orchestrate.UnanimityVoting{},
+		MaxTokens:    2048,
 	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
 
 	callCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()

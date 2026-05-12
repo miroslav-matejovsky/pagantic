@@ -36,6 +36,10 @@ type AgentConfig struct {
 	Registry *tool.Registry
 	// LocalDir is the working directory for file I/O (cloned repos, etc.).
 	LocalDir string
+	// MaxTokens limits response length. Zero uses 2048.
+	MaxTokens int
+	// MaxToolIterations limits tool-call loop rounds. Zero uses 20.
+	MaxToolIterations int
 }
 
 // AgentREPL is a generic agent-harness REPL. It provides:
@@ -178,15 +182,29 @@ func (t *AgentREPL) runChat(ctx context.Context) error {
 	_, _ = fmt.Fprintln(t.repl.Out, "Type 'exit' or 'quit' to return to main menu.")
 	_, _ = fmt.Fprintln(t.repl.Out)
 
-	chatAgent := orchestrate.NewAgentLoop(orchestrate.LoopConfig{
-		SystemPrompt: t.buildSystemPrompt(),
-		Engine:       t.engine,
-		Tools:        t.cfg.Registry,
-		Stream:       TerminalRenderer(t.repl.Out),
+	maxTokens := t.cfg.MaxTokens
+	if maxTokens <= 0 {
+		maxTokens = 2048
+	}
+	maxToolIterations := t.cfg.MaxToolIterations
+	if maxToolIterations <= 0 {
+		maxToolIterations = 20
+	}
+
+	chatAgent, err := orchestrate.NewAgentLoop(orchestrate.LoopConfig{
+		SystemPrompt:      t.buildSystemPrompt(),
+		Engine:            t.engine,
+		Tools:             t.cfg.Registry,
+		Stream:            TerminalRenderer(t.repl.Out),
+		MaxTokens:         maxTokens,
+		MaxToolIterations: maxToolIterations,
 		OnToolResult: func(name, output string) {
 			_, _ = fmt.Fprintf(t.repl.Out, "\n%s\n%s\n", Green("Tool: "+name), SanitizeOutput(output))
 		},
 	})
+	if err != nil {
+		return fmt.Errorf("chat: %w", err)
+	}
 
 	scanner := bufio.NewScanner(t.repl.In)
 

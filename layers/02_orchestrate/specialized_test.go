@@ -14,11 +14,14 @@ func TestSpecializedLoop_Call_NoTools(t *testing.T) {
 	eng := &fakeEngine{
 		responses: []inference.Result{{Content: `[{"email":"a@b.com"}]`}},
 	}
-	loop := NewSpecializedLoop(SpecializedConfig{
-		SystemPrompt: "sys",
-		Engine:       eng,
-		Schema:       core.Schema{Type: "array"},
+	loop, err := NewSpecializedLoop(SpecializedConfig{
+		SystemPrompt:      "sys",
+		Engine:            eng,
+		Schema:            core.Schema{Type: "array"},
+		MaxTokens:         2048,
+		MaxToolIterations: 20,
 	})
+	require.NoError(t, err)
 
 	result, err := loop.Call(context.Background(), "analyze")
 	require.NoError(t, err)
@@ -39,12 +42,15 @@ func TestSpecializedLoop_Call_WithTools(t *testing.T) {
 		definition: core.ToolDefinition{Name: "fetch_data"},
 		result:     `[{"name":"X","email":"x@y.com","total_commits":5}]`,
 	}
-	loop := NewSpecializedLoop(SpecializedConfig{
-		SystemPrompt: "sys",
-		Engine:       eng,
-		Schema:       core.Schema{Type: "array"},
-		Tools:        tool.NewRegistry(toolDef),
+	loop, err := NewSpecializedLoop(SpecializedConfig{
+		SystemPrompt:      "sys",
+		Engine:            eng,
+		Schema:            core.Schema{Type: "array"},
+		Tools:             tool.NewRegistry(toolDef),
+		MaxTokens:         2048,
+		MaxToolIterations: 20,
 	})
+	require.NoError(t, err)
 
 	result, err := loop.Call(context.Background(), "analyze repo")
 	require.NoError(t, err)
@@ -55,19 +61,21 @@ func TestSpecializedLoop_Call_WithTools(t *testing.T) {
 	require.Contains(t, result.Content, "x@y.com")
 }
 
-func TestSpecializedLoop_MaxTokens_Default(t *testing.T) {
-	eng := &fakeEngine{
-		responses: []inference.Result{{Content: `{}`}},
-	}
-	loop := NewSpecializedLoop(SpecializedConfig{
-		SystemPrompt: "sys",
-		Engine:       eng,
-		Schema:       core.Schema{Type: "object"},
-	})
+func TestSpecializedLoop_New_Validation(t *testing.T) {
+	eng := &fakeEngine{}
+	schema := core.Schema{Type: "object"}
 
-	_, err := loop.Call(context.Background(), "go")
-	require.NoError(t, err)
-	require.Equal(t, 2048, eng.calls[0].MaxTokens)
+	_, err := NewSpecializedLoop(SpecializedConfig{Schema: schema, MaxTokens: 2048, MaxToolIterations: 20})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "Engine")
+
+	_, err = NewSpecializedLoop(SpecializedConfig{Engine: eng, Schema: schema, MaxToolIterations: 20})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "MaxTokens")
+
+	_, err = NewSpecializedLoop(SpecializedConfig{Engine: eng, Schema: schema, MaxTokens: 2048})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "MaxToolIterations")
 }
 
 func TestSpecializedLoop_Call_WithContext_NoTools(t *testing.T) {
@@ -77,12 +85,15 @@ func TestSpecializedLoop_Call_WithContext_NoTools(t *testing.T) {
 	provider := &fakeContextProvider{
 		messages: []core.Message{core.NewSystemMessage("context info")},
 	}
-	loop := NewSpecializedLoop(SpecializedConfig{
-		SystemPrompt:    "sys",
-		Engine:          eng,
-		Schema:          core.Schema{Type: "object"},
-		ContextProvider: provider,
+	loop, err := NewSpecializedLoop(SpecializedConfig{
+		SystemPrompt:      "sys",
+		Engine:            eng,
+		Schema:            core.Schema{Type: "object"},
+		ContextProvider:   provider,
+		MaxTokens:         2048,
+		MaxToolIterations: 20,
 	})
+	require.NoError(t, err)
 
 	result, err := loop.Call(context.Background(), "analyze")
 	require.NoError(t, err)
@@ -112,13 +123,16 @@ func TestSpecializedLoop_Call_WithContext_WithTools(t *testing.T) {
 	provider := &fakeContextProvider{
 		messages: []core.Message{core.NewSystemMessage("context info")},
 	}
-	loop := NewSpecializedLoop(SpecializedConfig{
-		SystemPrompt:    "sys",
-		Engine:          eng,
-		Schema:          core.Schema{Type: "object"},
-		Tools:           tool.NewRegistry(toolDef),
-		ContextProvider: provider,
+	loop, err := NewSpecializedLoop(SpecializedConfig{
+		SystemPrompt:      "sys",
+		Engine:            eng,
+		Schema:            core.Schema{Type: "object"},
+		Tools:             tool.NewRegistry(toolDef),
+		ContextProvider:   provider,
+		MaxTokens:         2048,
+		MaxToolIterations: 20,
 	})
+	require.NoError(t, err)
 
 	result, err := loop.Call(context.Background(), "analyze")
 	require.NoError(t, err)

@@ -89,14 +89,18 @@ func main() {
 		Required: []string{"sentiment", "confidence"},
 	}
 
-	// RedundantLoop runs 3 inference calls and picks the majority result.
-	rl := orchestrate.NewRedundantLoop(orchestrate.RedundantConfig{
+	rl, err := orchestrate.NewRedundantLoop(orchestrate.RedundantConfig{
 		Engine:       engine,
 		SystemPrompt: "Analyze sentiment. Return JSON with sentiment (positive/negative/neutral) and confidence (0-1).",
 		Schema:       schema,
 		N:            3,
 		Voting:       orchestrate.MajorityVoting{},
+		MaxTokens:    2048,
 	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
 
 	callCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()

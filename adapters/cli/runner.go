@@ -18,6 +18,12 @@ import (
 // The kronk inference engine requires a context with a deadline.
 const DefaultTimeout = 120 * time.Second
 
+// DefaultMaxTokens is used by Runner when RunConfig.MaxTokens is zero.
+const DefaultMaxTokens = 2048
+
+// DefaultMaxToolIterations is used by Runner when RunConfig.MaxToolIterations is zero.
+const DefaultMaxToolIterations = 20
+
 // RunConfig configures a single-shot CLI execution.
 type RunConfig struct {
 	// Engine is the inference engine to use. Required.
@@ -34,6 +40,10 @@ type RunConfig struct {
 	Timeout time.Duration
 	// Out is the output writer. Defaults to os.Stdout when nil.
 	Out io.Writer
+	// MaxTokens limits response length. Zero uses DefaultMaxTokens (2048).
+	MaxTokens int
+	// MaxToolIterations limits tool-call loop rounds. Zero uses DefaultMaxToolIterations (20).
+	MaxToolIterations int
 }
 
 // Runner executes a single inference request and writes the result.
@@ -90,13 +100,27 @@ func (r *Runner) Run(ctx context.Context, prompt string) error {
 		}
 	}
 
-	agent := orchestrate.NewAgentLoop(orchestrate.LoopConfig{
-		SystemPrompt:    r.cfg.SystemPrompt,
-		Engine:          r.cfg.Engine,
-		Tools:           r.cfg.Registry,
-		Stream:          stream,
-		ContextProvider: r.cfg.ContextProvider,
+	maxTokens := r.cfg.MaxTokens
+	if maxTokens <= 0 {
+		maxTokens = DefaultMaxTokens
+	}
+	maxToolIterations := r.cfg.MaxToolIterations
+	if maxToolIterations <= 0 {
+		maxToolIterations = DefaultMaxToolIterations
+	}
+
+	agent, err := orchestrate.NewAgentLoop(orchestrate.LoopConfig{
+		SystemPrompt:      r.cfg.SystemPrompt,
+		Engine:            r.cfg.Engine,
+		Tools:             r.cfg.Registry,
+		Stream:            stream,
+		ContextProvider:   r.cfg.ContextProvider,
+		MaxTokens:         maxTokens,
+		MaxToolIterations: maxToolIterations,
 	})
+	if err != nil {
+		return fmt.Errorf("cli: %w", err)
+	}
 
 	result, err := agent.Chat(ctx, prompt)
 	if err != nil {

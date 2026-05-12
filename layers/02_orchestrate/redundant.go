@@ -85,13 +85,13 @@ type RedundantResult struct {
 
 // RedundantConfig configures redundant inference loop.
 type RedundantConfig struct {
-	Engine       inference.Engine
+	Engine       inference.Engine // required
 	SystemPrompt string
 	Schema       core.Schema
-	Grammar      string // GBNF grammar; empty means none
-	N            int    // number of candidates; 0 defaults to 3
-	Voting       VotingStrategy
-	MaxTokens    int
+	Grammar      string         // GBNF grammar; empty means none
+	N            int            // required; number of candidates; must be > 0
+	Voting       VotingStrategy // required
+	MaxTokens    int            // required; must be > 0
 	Observer     observe.EventLog
 }
 
@@ -102,18 +102,27 @@ type RedundantLoop struct {
 	cfg RedundantConfig
 }
 
-// NewRedundantLoop creates RedundantLoop with given config.
-func NewRedundantLoop(cfg RedundantConfig) *RedundantLoop {
+// innerMaxToolIterations is used by RedundantLoop for inner SpecializedLoops that
+// never invoke tools; the value satisfies the NewAgentLoop requirement but is
+// never reached at runtime.
+const innerMaxToolIterations = 20
+
+// NewRedundantLoop creates RedundantLoop with given config. Returns error if
+// Engine is nil, MaxTokens <= 0, N <= 0, or Voting is nil.
+func NewRedundantLoop(cfg RedundantConfig) (*RedundantLoop, error) {
+	if cfg.Engine == nil {
+		return nil, fmt.Errorf("redundant loop: Engine required")
+	}
+	if cfg.MaxTokens <= 0 {
+		return nil, fmt.Errorf("redundant loop: MaxTokens must be > 0")
+	}
 	if cfg.N <= 0 {
-		cfg.N = 3
+		return nil, fmt.Errorf("redundant loop: N must be > 0")
 	}
 	if cfg.Voting == nil {
-		cfg.Voting = MajorityVoting{}
+		return nil, fmt.Errorf("redundant loop: Voting required")
 	}
-	if cfg.MaxTokens == 0 {
-		cfg.MaxTokens = defaultMaxTokens
-	}
-	return &RedundantLoop{cfg: cfg}
+	return &RedundantLoop{cfg: cfg}, nil
 }
 
 // Call runs N inference calls and applies voting strategy.
@@ -134,14 +143,18 @@ func (rl *RedundantLoop) Call(ctx context.Context, prompt string) (*RedundantRes
 			return nil, err
 		}
 
-		sl := NewSpecializedLoop(SpecializedConfig{
-			Engine:       rl.cfg.Engine,
-			SystemPrompt: rl.cfg.SystemPrompt,
-			Schema:       rl.cfg.Schema,
-			Grammar:      rl.cfg.Grammar,
-			MaxTokens:    rl.cfg.MaxTokens,
-			Observer:     rl.cfg.Observer,
+		sl, err := NewSpecializedLoop(SpecializedConfig{
+			Engine:            rl.cfg.Engine,
+			SystemPrompt:      rl.cfg.SystemPrompt,
+			Schema:            rl.cfg.Schema,
+			Grammar:           rl.cfg.Grammar,
+			MaxTokens:         rl.cfg.MaxTokens,
+			MaxToolIterations: innerMaxToolIterations,
+			Observer:          rl.cfg.Observer,
 		})
+		if err != nil {
+			return nil, fmt.Errorf("redundant loop: build inner loop: %w", err)
+		}
 
 		result, err := sl.Call(ctx, prompt)
 		if err != nil {
